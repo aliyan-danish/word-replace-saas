@@ -1,0 +1,50 @@
+---
+description: Core project context for the Word Replace SaaS tool
+alwaysApply: true
+---
+
+# Project: Bulk Text File Word-Replacement Tool (SaaS)
+
+## What this project is
+A web app where authenticated users upload text files (single or bulk via .zip),
+search for a target word across all files, see occurrence counts (per-file + total),
+replace the word on confirmation, and download the results. Being built into a
+sellable SaaS product with subscription plans, trial periods, and an admin role.
+
+## Tech stack (do not suggest alternatives without asking)
+- Backend: Node.js + Express
+- Frontend: React (Vite), plain JavaScript (not TypeScript, unless told otherwise)
+- Database: PostgreSQL, accessed via Prisma ORM
+- Auth: JWT (JSON Web Tokens), bcrypt for password hashing
+- Job queue: BullMQ + Redis (for scan/replace jobs — never process large files inline in a request)
+- File handling: Multer for uploads, AdmZip/JSZip for zip extraction/creation
+
+## Folder structure
+apps/server   -> Express backend (routes, controllers, prisma schema, workers)
+apps/client   -> React frontend (Vite)
+
+## Architectural rules (important — follow these, don't deviate)
+1. Heavy work (unzipping, scanning, replacing text) must NEVER run directly inside
+   an Express route handler. It must be queued via BullMQ and processed by a
+   separate worker process.
+2. Scan and Replace are always two separate jobs/steps. Never replace text
+   without the user first seeing an occurrence report and confirming.
+3. Auth uses JWT, verified via Express middleware. Role field on User is either
+   USER or ADMIN — protect admin-only routes with a dedicated middleware check.
+4. Never store secrets (DB URL, JWT secret) in code — always read from process.env.
+5. Keep backend routes RESTful and organized by resource (e.g. /auth, /files, /jobs).
+
+## Coding conventions
+- Use async/await, not .then() chains.
+- Wrap all async route handlers in try/catch, return proper HTTP status codes
+  (400 for bad input, 401 unauthorized, 403 forbidden, 404 not found, 500 server error).
+- Keep functions small and single-purpose; prefer separate controller/service files
+  over giant route files.
+- Add short comments explaining *why*, not just *what*, especially around the
+  queue/worker logic and auth middleware, since the developer is learning as they build.
+
+## Current status
+Day 1 complete: backend/frontend scaffolded, Prisma connected to Postgres (Neon),
+basic User model exists with a role field. Currently building Day 2: authentication.
+Subscription/trial/admin panel features are planned but not yet specified in detail —
+do not invent subscription logic until explicitly instructed.
