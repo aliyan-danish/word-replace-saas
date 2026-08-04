@@ -8,14 +8,97 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
+  id            String        @id @default(uuid())
+  email         String        @unique
+  password      String
+  role          Role          @default(USER)
+  createdAt     DateTime      @default(now())
+  subscription  Subscription?
+  jobs          Job[]
 }
 
 enum Role {
   USER
   ADMIN
+}
+
+model Plan {
+  id              String         @id @default(uuid())
+  name            String         @unique // "FREE" or "PRO"
+  // null = unlimited (PRO); a number caps jobs per month (FREE).
+  monthlyJobLimit Int?
+  maxFilesPerJob  Int            // e.g. 3 for FREE, 100 for PRO
+  maxUploadBytes  Int            // e.g. 2MB for FREE, 10MB for PRO
+  createdAt       DateTime       @default(now())
+  subscriptions   Subscription[]
+}
+
+model Subscription {
+  id               String             @id @default(uuid())
+  userId           String             @unique
+  user             User               @relation(fields: [userId], references: [id])
+  planId           String
+  plan             Plan               @relation(fields: [planId], references: [id])
+  status           SubscriptionStatus @default(TRIAL)
+  trialEndsAt      DateTime?
+  currentPeriodEnd DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELED
+}
+
+model Job {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  status          JobStatus @default(PENDING)
+  originalName    String
+  // Nullable: uploads are held in memory and their text is stored on JobFile.content,
+  // so there is no on-disk path at upload time. Kept for a possible future
+  // object-storage location for the original archive.
+  storagePath     String?
+  isZip           Boolean   @default(false)
+  searchWord      String?
+  replaceWord     String?
+  totalMatches    Int?
+  // Populated by the replace worker when a job fails, so the failure reason is
+  // visible (e.g. via the status endpoint) instead of being lost to the logs.
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  files           JobFile[]
+}
+
+model JobFile {
+  id            String  @id @default(uuid())
+  jobId         String
+  job           Job     @relation(fields: [jobId], references: [id])
+  filename      String
+  // UTF-8 text content of the file. Maps to Postgres `text`, so large files are fine.
+  content       String
+  // Byte length of the original file content (not the UTF-8 re-encoded length).
+  size          Int
+  // Result of the most recent replace operation. Nullable because a freshly
+  // uploaded/searched file has no replacement yet; the original `content` above is
+  // never overwritten, so we can always show a before/after and re-run safely.
+  replacedContent String?
+  // Reused to record how many replacements were made in the last replace operation
+  // (equivalent to the occurrence count for that word/toggle combination).
+  matchCount    Int     @default(0)
+  outputPath    String?
+}
+
+enum JobStatus {
+  PENDING
+  SCANNING
+  SCANNED
+  REPLACING
+  COMPLETED
+  FAILED
 }

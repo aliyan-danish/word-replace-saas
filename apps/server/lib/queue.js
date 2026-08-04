@@ -1,0 +1,19 @@
+const { Queue } = require('bullmq');
+
+// Shared Redis connection settings for BOTH the Express app (which enqueues jobs) and
+// the worker process (which consumes them). Passing a plain options object (rather than
+// a pre-built ioredis instance) lets BullMQ create and correctly configure its own
+// connections on each side — including the blocking connection the worker needs.
+// Host/port are read from env with a local default (Memurai on 127.0.0.1:6379).
+const connection = {
+  host: process.env.REDIS_HOST || '127.0.0.1',
+  port: Number(process.env.REDIS_PORT) || 6379,
+};
+
+// One queue name, referenced by both producer and consumer so they never drift apart.
+const REPLACE_QUEUE_NAME = 'replace-jobs';
+
+// The producer-side Queue instance used by the Express app to enqueue replace jobs.
+const replaceQueue = new Queue(REPLACE_QUEUE_NAME, { connection });
+
+module.exports = { connection, REPLACE_QUEUE_NAME, replaceQueue };
