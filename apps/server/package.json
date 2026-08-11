@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
-    "start": "node index.js",
+    "start": "node scripts/start-production.js",
+    "start:api-only": "node index.js",
     "worker": "node workers/replace.worker.js",
     "worker:dev": "nodemon workers/replace.worker.js",
     "seed": "node prisma/seed.js",
