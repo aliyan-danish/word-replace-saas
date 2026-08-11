@@ -5,10 +5,16 @@ const { replaceQueue } = require('../lib/queue');
 // Search still runs inline (read-only + cheap); it shares the regex builder with the
 // replace worker via this module so the two can never diverge.
 const { buildSearchRegex } = require('../lib/textReplace');
+// Subscription/trial enforcement for uploads. PRO_PLAN_MISSING lets us surface a clear
+// "run the seed" 500 if the backfill can't find the PRO plan.
+const { getEnforcedSubscription, PRO_PLAN_MISSING } = require('../lib/subscription');
 
-// Hard cap on how many .txt files we accept out of a single archive. Keeps a job
-// bounded and prevents a huge archive from creating thousands of rows in one request.
-const MAX_FILES_PER_ZIP = 100;
+// Hard caps on uncompressed zip content. Checked via entry.header.size BEFORE
+// calling getData(), so a zip bomb is rejected without ever expanding into memory.
+// Per-file (20MB) is well above the 10MB whole-upload compressed ceiling for normal
+// text; the total (50MB) blocks many medium files that individually look fine.
+const MAX_UNCOMPRESSED_BYTES_PER_FILE = 20 * 1024 * 1024;
+const MAX_UNCOMPRESSED_BYTES_TOTAL = 50 * 1024 * 1024;
 
 // Decide whether a zip entry is a real .txt file we should keep, filtering out
 // directories and OS/editor junk (macOS resource forks, .DS_Store, dotfiles).
@@ -25,9 +31,10 @@ function isWantedTxtEntry(entry) {
   return base.toLowerCase().endsWith('.txt');
 }
 
-// Turn a .zip buffer into a list of { filename, content, size }.
-// Throws a plain Error with a user-safe message on invalid/empty archives.
-function extractTxtFilesFromZip(buffer) {
+// Turn a .zip buffer into a list of { filename, content, size }. `maxFiles` is the
+// caller's plan-derived cap on how many .txt files are allowed out of one archive.
+// Throws a plain Error with a user-safe message on invalid/empty/oversized archives.
+function extractTxtFilesFromZip(buffer, maxFiles) {
   let zip;
   try {
     zip = new AdmZip(buffer);
@@ -40,10 +47,33 @@ function extractTxtFilesFromZip(buffer) {
   if (txtEntries.length === 0) {
     throw new ZipError('The .zip file contains no .txt files.');
   }
-  if (txtEntries.length > MAX_FILES_PER_ZIP) {
+  if (txtEntries.length > maxFiles) {
     throw new ZipError(
-      `The .zip contains ${txtEntries.length} .txt files, which exceeds the limit of ${MAX_FILES_PER_ZIP}.`
+      `The .zip contains ${txtEntries.length} .txt files, which exceeds your plan's limit of ${maxFiles} files per upload.`
     );
+  }
+
+  // Zip-bomb protection: use declared uncompressed sizes from the central directory
+  // (entry.header.size) BEFORE decompressing. Never call getData() first.
+  let totalUncompressed = 0;
+  for (const entry of txtEntries) {
+    const declaredSize = entry.header && entry.header.size;
+    if (typeof declaredSize !== 'number' || declaredSize < 0) {
+      throw new ZipError(
+        `Could not read the uncompressed size of "${path.posix.basename(entry.entryName)}". The archive may be invalid.`
+      );
+    }
+    if (declaredSize > MAX_UNCOMPRESSED_BYTES_PER_FILE) {
+      throw new ZipError(
+        `"${path.posix.basename(entry.entryName)}" expands to more than ${MAX_UNCOMPRESSED_BYTES_PER_FILE / (1024 * 1024)}MB uncompressed, which exceeds the per-file limit.`
+      );
+    }
+    totalUncompressed += declaredSize;
+    if (totalUncompressed > MAX_UNCOMPRESSED_BYTES_TOTAL) {
+      throw new ZipError(
+        `The .zip expands to more than ${MAX_UNCOMPRESSED_BYTES_TOTAL / (1024 * 1024)}MB uncompressed across all files, which exceeds the total limit.`
+      );
+    }
   }
 
   return txtEntries.map((entry) => {
@@ -67,14 +97,54 @@ async function uploadJob(req, res) {
         .json({ error: 'No file uploaded. Send a file in the "file" field.' });
     }
 
+    // --- Subscription / trial enforcement (runs BEFORE any parsing or DB writes) ---
+    const now = new Date();
+
+    // Resolve the caller's subscription: backfills a trial for pre-subscription accounts
+    // and lazily flips an expired trial to EXPIRED (single source of truth for expiry).
+    const subscription = await getEnforcedSubscription(req.user.id, now);
+    const plan = subscription.plan;
+
+    // Gate: an expired trial or canceled plan can't upload at all.
+    if (subscription.status === 'EXPIRED' || subscription.status === 'CANCELED') {
+      return res.status(403).json({
+        error: 'Your trial has ended. Upgrade to Pro to continue uploading files.',
+      });
+    }
+
+    // Monthly job quota — only meaningful when the plan caps it (FREE). PRO has
+    // monthlyJobLimit = null (unlimited), so this block is skipped for trial/PRO users.
+    if (plan.monthlyJobLimit != null) {
+      // Start of the current calendar month in server-local time.
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const jobsThisMonth = await prisma.job.count({
+        where: { userId: req.user.id, createdAt: { gte: startOfMonth } },
+      });
+      if (jobsThisMonth >= plan.monthlyJobLimit) {
+        return res.status(403).json({
+          error: `You've reached your plan's limit of ${plan.monthlyJobLimit} uploads this month.`,
+        });
+      }
+    }
+
     const { originalname, buffer } = req.file;
     const isZip = path.extname(originalname).toLowerCase() === '.zip';
 
-    // Build the list of files to persist. Heavy work is intentionally bounded here
-    // (<=10MB upload, <=100 files) so it stays cheap; see the note in the route file.
+    // Per-plan upload-size limit, checked against the ACTUAL uploaded bytes (not the fixed
+    // multer ceiling). multer already rejected anything over the absolute 10MB max before
+    // we got here; this narrows it to the caller's plan (e.g. 2MB on FREE).
+    if (buffer.length > plan.maxUploadBytes) {
+      const limitMb = (plan.maxUploadBytes / (1024 * 1024)).toFixed(2);
+      return res.status(400).json({
+        error: `File is ${(buffer.length / (1024 * 1024)).toFixed(2)}MB, which exceeds your plan's ${limitMb}MB upload limit.`,
+      });
+    }
+
+    // Build the list of files to persist. The per-plan file-count cap is enforced during
+    // zip extraction so a huge archive is rejected before creating any rows.
     let files;
     if (isZip) {
-      files = extractTxtFilesFromZip(buffer);
+      files = extractTxtFilesFromZip(buffer, plan.maxFilesPerJob);
     } else {
       files = [
         {
@@ -115,6 +185,14 @@ async function uploadJob(req, res) {
   } catch (err) {
     if (err instanceof ZipError) {
       return res.status(400).json({ error: err.message });
+    }
+    // Backfill couldn't find the PRO plan (seed never run): tell the developer clearly
+    // rather than emitting a generic 500.
+    if (err instanceof Error && err.message === PRO_PLAN_MISSING) {
+      console.error('uploadJob error: PRO plan not found — run the seed script (npm run seed)');
+      return res.status(500).json({
+        error: 'Subscription plans are not configured. Run the seed script (npm run seed) to create the FREE and PRO plans.',
+      });
     }
     // Never leak stack traces / internals to the client.
     console.error('uploadJob error:', err);
