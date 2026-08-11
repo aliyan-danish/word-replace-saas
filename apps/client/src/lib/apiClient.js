@@ -1,15 +1,15 @@
 // Shared API client. Wraps fetch with the backend base URL, automatically attaches the
 // JWT as an Authorization header, and centralizes 401 handling.
 //
-// Base URL: same convention the existing Login/Register pages use
-// (const API_BASE = 'http://localhost:5000').
+// Base URL: VITE_API_URL in production (set in Vercel). Local default keeps localhost.
+// Login/Register import this same constant so they cannot drift to a hardcoded host.
 //
 // Token source: the JWT lives ONLY in memory (see AuthContext), not localStorage, to
 // avoid XSS-persisted tokens. Since this module isn't a React component and can't call
 // useAuth(), AuthContext pushes the current token in via setAuthToken() whenever it
 // changes. The token is held in a module variable — still in memory, never persisted.
 
-export const API_BASE = 'http://localhost:5000';
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 let authToken = null;
 let onUnauthorized = null;

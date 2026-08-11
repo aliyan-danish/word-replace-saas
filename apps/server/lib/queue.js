@@ -4,11 +4,19 @@ const { Queue } = require('bullmq');
 // the worker process (which consumes them). Passing a plain options object (rather than
 // a pre-built ioredis instance) lets BullMQ create and correctly configure its own
 // connections on each side — including the blocking connection the worker needs.
-// Host/port are read from env with a local default (Memurai on 127.0.0.1:6379).
-const connection = {
-  host: process.env.REDIS_HOST || '127.0.0.1',
-  port: Number(process.env.REDIS_PORT) || 6379,
-};
+//
+// Production/cloud (e.g. Upstash): set REDIS_URL to a full redis:// or rediss:// URL.
+// BullMQ passes `url` to `new Redis(url, rest)`; ioredis enables TLS automatically when
+// the scheme is rediss:// — no extra tls option is required.
+//
+// Local dev: leave REDIS_URL unset to keep the existing host/port behavior (Memurai on
+// 127.0.0.1:6379, or REDIS_HOST / REDIS_PORT overrides).
+const connection = process.env.REDIS_URL
+  ? { url: process.env.REDIS_URL }
+  : {
+      host: process.env.REDIS_HOST || '127.0.0.1',
+      port: Number(process.env.REDIS_PORT) || 6379,
+    };
 
 // One queue name, referenced by both producer and consumer so they never drift apart.
 const REPLACE_QUEUE_NAME = 'replace-jobs';

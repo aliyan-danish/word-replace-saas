@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-
-const API_BASE = 'http://localhost:5000'
+import { API_BASE } from '../lib/apiClient'
 
 export default function Login() {
   const [email, setEmail] = useState('')
