@@ -89,10 +89,26 @@ export function apiGet(path) {
   return request(path, { method: 'GET' });
 }
 
+// Current user + subscription/limits (GET /auth/me). Shape:
+// { id, email, role, subscription: { plan, status, trialEndsAt, currentPeriodEnd },
+//   limits: { monthlyJobLimit, maxFilesPerJob, maxUploadBytes } }
+export function apiGetMe() {
+  return apiGet('/auth/me');
+}
+
 // POST a JSON body.
 export function apiPost(path, body) {
   return request(path, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
+}
+
+// PATCH a JSON body (admin plan/user updates).
+export function apiPatch(path, body) {
+  return request(path, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: body != null ? JSON.stringify(body) : undefined,
   });
