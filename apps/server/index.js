@@ -10,6 +10,11 @@ const adminRoutes = require('./routes/admin.routes');
 
 const app = express();
 
+// Railway (and any reverse proxy) sets X-Forwarded-For. Trust exactly one hop so
+// express-rate-limit can use the real client IP. Do not use `true` — that trusts
+// every proxy in the chain and lets a client spoof X-Forwarded-For.
+app.set('trust proxy', 1);
+
 // --- 1. Helmet: secure HTTP response headers (sensible defaults) ---
 // One deliberate override: Cross-Origin-Resource-Policy defaults to "same-origin",
 // which would block the Vite frontend (localhost:5173) from reading API responses
