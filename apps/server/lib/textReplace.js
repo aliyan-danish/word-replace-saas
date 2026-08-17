@@ -32,4 +32,41 @@ function escapeReplacementDollarSigns(text) {
   return text.replace(/\$/g, '$$$$');
 }
 
-module.exports = { escapeRegex, buildSearchRegex, escapeReplacementDollarSigns };
+// True when the string has at least one cased letter and every cased letter is upper.
+function isAllUpperCase(text) {
+  return text === text.toUpperCase() && text !== text.toLowerCase();
+}
+
+// True when the string has at least one cased letter and every cased letter is lower.
+function isAllLowerCase(text) {
+  return text === text.toLowerCase() && text !== text.toUpperCase();
+}
+
+// "Project" style: first cased letter is upper, and the rest is all lowercase.
+// A single uppercase letter is treated as ALL UPPERCASE (checked first), not title case.
+function isCapitalized(text) {
+  if (text.length < 2) return false;
+  const first = text[0];
+  const rest = text.slice(1);
+  const firstIsUpper = first === first.toUpperCase() && first !== first.toLowerCase();
+  return firstIsUpper && rest === rest.toLowerCase() && !isAllUpperCase(text);
+}
+
+// Copy the matched word's simple case pattern onto the replacement text.
+// Mixed junk like "PrOjEcT" (and strings with no cased letters) stays as typed.
+function applyCasePattern(matchedText, replacementText) {
+  if (isAllUpperCase(matchedText)) return replacementText.toUpperCase();
+  if (isCapitalized(matchedText)) {
+    if (replacementText.length === 0) return replacementText;
+    return replacementText[0].toUpperCase() + replacementText.slice(1).toLowerCase();
+  }
+  if (isAllLowerCase(matchedText)) return replacementText.toLowerCase();
+  return replacementText;
+}
+
+module.exports = {
+  escapeRegex,
+  buildSearchRegex,
+  escapeReplacementDollarSigns,
+  applyCasePattern,
+};

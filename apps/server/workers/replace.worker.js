@@ -6,7 +6,11 @@ const { Worker } = require('bullmq');
 const prisma = require('../lib/prisma');
 const { connection, REPLACE_QUEUE_NAME } = require('../lib/queue');
 // Reuse the SAME helpers the controller/search use, so replace matches search exactly.
-const { buildSearchRegex, escapeReplacementDollarSigns } = require('../lib/textReplace');
+const {
+  buildSearchRegex,
+  escapeReplacementDollarSigns,
+  applyCasePattern,
+} = require('../lib/textReplace');
 
 // The processor for a single replace job. Anything it throws marks that one job as
 // failed (handled below) but never stops the worker from processing future jobs.
@@ -24,14 +28,20 @@ async function processReplaceJob(job) {
     throw new Error(`Job ${jobId} no longer exists.`);
   }
 
-  // Same regex + literal-$ handling as replaceJob used to do inline. Always replace
-  // from the ORIGINAL content so re-runs overwrite cleanly instead of compounding.
+  // Same regex as search. Always replace from the ORIGINAL content so re-runs
+  // overwrite cleanly instead of compounding.
   const regex = buildSearchRegex(word, { caseSensitive, wholeWord });
-  const safeReplacement = escapeReplacementDollarSigns(replacement);
 
   const perFile = dbJob.files.map((file) => {
     const replacements = file.content.match(regex)?.length ?? 0;
-    const replacedContent = file.content.replace(regex, safeReplacement);
+    // Case-sensitive: insert the typed replacement literally (existing behavior).
+    // Case-insensitive: copy each match's simple case pattern onto the replacement.
+    // Function replacer: $ in the return value is literal, so no $$ escaping here.
+    const replacedContent = caseSensitive
+      ? file.content.replace(regex, escapeReplacementDollarSigns(replacement))
+      : file.content.replace(regex, (matched) =>
+          applyCasePattern(matched, replacement)
+        );
     return { id: file.id, replacements, replacedContent };
   });
   const totalReplacements = perFile.reduce((sum, f) => sum + f.replacements, 0);

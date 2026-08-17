@@ -1,3 +1,5 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { Queue } = require('bullmq');
 
 // Shared Redis connection settings for BOTH the Express app (which enqueues jobs) and
@@ -17,6 +19,11 @@ const connection = process.env.REDIS_URL
       host: process.env.REDIS_HOST || '127.0.0.1',
       port: Number(process.env.REDIS_PORT) || 6379,
     };
+
+const redisTarget = process.env.REDIS_URL
+  ? process.env.REDIS_URL.split('@').pop()
+  : `${connection.host}:${connection.port}`;
+console.log(`[queue] redis target: ${redisTarget}`);
 
 // One queue name, referenced by both producer and consumer so they never drift apart.
 const REPLACE_QUEUE_NAME = 'replace-jobs';
