@@ -2,3 +2,7 @@ node_modules/
 .env
 dist/
 build/test-upload/ 
+test-upload/ 
+apps/server/*.zip 
+apps/server/testfile.txt 
+apps/server/case-mix.txt 
