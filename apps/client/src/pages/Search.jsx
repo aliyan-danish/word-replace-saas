@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { apiPost, ApiError } from '../lib/apiClient'
+import BackNav from '../components/BackNav'
 
 export default function Search() {
   const { jobId } = useParams()
@@ -62,23 +63,21 @@ export default function Search() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-ink text-paper">
       <main className="mx-auto max-w-2xl px-6 py-16">
-        <Link to="/dashboard" className="text-sm text-indigo-600 hover:text-indigo-500">
-          ← Dashboard
-        </Link>
+        <BackNav to="/dashboard" label="Dashboard" />
 
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="mt-4 page-title">
           Search
         </h1>
-        <p className="mt-2 text-sm text-slate-500">
-          Job ID: <span className="font-mono text-slate-700">{jobId}</span>
+        <p className="mt-2 text-sm text-paper/60">
+          Job ID: <span className="font-mono text-paper/70">{jobId}</span>
         </p>
 
-        <div className="mt-8 bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-8">
+        <div className="mt-8 card p-8">
           <form onSubmit={handleSearch} className="space-y-5" noValidate>
             {error && (
-              <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
+              <div className="rounded-lg bg-remove/10 px-4 py-3 text-sm text-remove ring-1 ring-remove/30">
                 {error}
               </div>
             )}
@@ -86,7 +85,7 @@ export default function Search() {
             <div>
               <label
                 htmlFor="word"
-                className="block text-sm font-medium text-slate-700 mb-1.5"
+                className="block text-sm font-medium text-paper/80 mb-1.5"
               >
                 Word to find
               </label>
@@ -95,27 +94,27 @@ export default function Search() {
                 type="text"
                 value={word}
                 onChange={(e) => setWord(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="field"
                 placeholder="e.g. apple"
               />
             </div>
 
             <div className="flex flex-wrap gap-x-6 gap-y-2">
-              <label className="flex items-center gap-2 text-sm text-slate-700">
+              <label className="flex items-center gap-2 text-sm text-paper/80">
                 <input
                   type="checkbox"
                   checked={caseSensitive}
                   onChange={(e) => setCaseSensitive(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  className="h-4 w-4 rounded border-ink-border bg-ink text-insert focus:ring-insert"
                 />
                 Case sensitive
               </label>
-              <label className="flex items-center gap-2 text-sm text-slate-700">
+              <label className="flex items-center gap-2 text-sm text-paper/80">
                 <input
                   type="checkbox"
                   checked={wholeWord}
                   onChange={(e) => setWholeWord(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  className="h-4 w-4 rounded border-ink-border bg-ink text-insert focus:ring-insert"
                 />
                 Whole word only
               </label>
@@ -124,7 +123,7 @@ export default function Search() {
             <button
               type="submit"
               disabled={searching}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-primary flex w-full items-center justify-center gap-2"
             >
               {searching && (
                 <svg
@@ -155,28 +154,28 @@ export default function Search() {
 
         {result && (
           <>
-            <div className="mt-6 bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-8">
+            <div className="mt-6 card p-8">
               <div className="text-center">
-                <p className="text-4xl font-semibold tracking-tight text-slate-900">
+                <p className="font-display text-4xl font-semibold tracking-tight text-paper">
                   {result.totalOccurrences}
                 </p>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-paper/60">
                   {result.totalOccurrences === 1 ? 'occurrence' : 'occurrences'} of{' '}
-                  <span className="font-medium text-slate-700">
-                    &ldquo;{result.word}&rdquo;
+                  <span className="font-mono font-medium text-remove">
+                    {result.word}
                   </span>
                   {result.totalOccurrences === 0 && ' — try a different word or toggles'}
                 </p>
               </div>
 
-              <ul className="mt-6 divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200">
+              <ul className="mt-6 divide-y divide-ink-border rounded-lg ring-1 ring-ink-border">
                 {result.files.map((f) => (
                   <li
                     key={f.id}
                     className="flex items-center justify-between px-4 py-2.5 text-sm"
                   >
-                    <span className="truncate text-slate-700">{f.filename}</span>
-                    <span className="ml-4 shrink-0 text-slate-400">
+                    <span className="truncate text-paper/80">{f.filename}</span>
+                    <span className="ml-4 shrink-0 text-paper/50">
                       {f.occurrences} {f.occurrences === 1 ? 'match' : 'matches'}
                     </span>
                   </li>
@@ -184,14 +183,14 @@ export default function Search() {
               </ul>
             </div>
 
-            <div className="mt-6 bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-8">
-              <h2 className="text-base font-semibold tracking-tight text-slate-900">
+            <div className="mt-6 card p-8">
+              <h2 className="font-display text-base font-semibold tracking-tight text-paper">
                 Replace
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-paper/60">
                 Replace every occurrence of{' '}
-                <span className="font-medium text-slate-700">
-                  &ldquo;{result.word}&rdquo;
+                <span className="font-mono font-medium text-remove">
+                  {result.word}
                 </span>
                 . Leave the field empty to delete the word instead.
               </p>
@@ -199,7 +198,7 @@ export default function Search() {
               <div className="mt-4">
                 <label
                   htmlFor="replacement"
-                  className="block text-sm font-medium text-slate-700 mb-1.5"
+                  className="block text-sm font-medium text-paper/80 mb-1.5"
                 >
                   Replacement word
                 </label>
@@ -208,7 +207,7 @@ export default function Search() {
                   type="text"
                   value={replacement}
                   onChange={(e) => setReplacement(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="field"
                   placeholder="e.g. orange (or leave empty to delete)"
                 />
               </div>
@@ -216,7 +215,7 @@ export default function Search() {
               <button
                 type="button"
                 onClick={handleConfirmReplace}
-                className="mt-6 w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                className="btn-primary mt-6 w-full"
               >
                 Confirm &amp; Replace
               </button>

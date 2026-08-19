@@ -1,30 +1,29 @@
 import { Link } from 'react-router-dom'
+import BackNav from '../components/BackNav'
 
 export default function Admin() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-ink text-paper">
       <main className="mx-auto max-w-6xl px-6 py-16">
-        <Link to="/dashboard" className="text-sm text-indigo-600 hover:text-indigo-500">
-          ← Dashboard
-        </Link>
+        <BackNav to="/dashboard" label="Dashboard" />
 
-        <h1 className="mt-6 text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="mt-6 page-title">
           Admin Panel
         </h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-paper/60">
           Manage users and subscription plans.
         </p>
 
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
             to="/admin/users"
-            className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="btn-primary"
           >
             Manage Users
           </Link>
           <Link
             to="/admin/plans"
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="btn-secondary"
           >
             Manage Plans
           </Link>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { apiGet, apiPost, ApiError } from '../lib/apiClient'
+import BackNav from '../components/BackNav'
 
 const POLL_INTERVAL_MS = 2000
 // Brief pause on the success screen before moving to the result page.
@@ -177,24 +178,24 @@ export default function Replace() {
   const renderContext = () => {
     if (!hasValidParams) return null
     return (
-      <p className="mt-2 text-sm text-slate-500">
+      <p className="mt-2 text-sm text-paper/60">
         {params.replacement === '' ? (
           <>
             Deleting{' '}
-            <span className="font-medium text-slate-700">
-              &ldquo;{params.word}&rdquo;
+            <span className="font-mono font-medium text-remove">
+              {params.word}
             </span>{' '}
             from your files
           </>
         ) : (
           <>
             Replacing{' '}
-            <span className="font-medium text-slate-700">
-              &ldquo;{params.word}&rdquo;
+            <span className="font-mono font-medium text-remove">
+              {params.word}
             </span>{' '}
             with{' '}
-            <span className="font-medium text-slate-700">
-              &ldquo;{params.replacement}&rdquo;
+            <span className="font-mono font-medium text-insert">
+              {params.replacement}
             </span>
           </>
         )}
@@ -203,29 +204,24 @@ export default function Replace() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-ink text-paper">
       <main className="mx-auto max-w-2xl px-6 py-16">
-        <Link
-          to={`/jobs/${jobId}/search`}
-          className="text-sm text-indigo-600 hover:text-indigo-500"
-        >
-          ← Search
-        </Link>
+        <BackNav to={`/jobs/${jobId}/search`} label="Search" />
 
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="mt-4 page-title">
           Replace
         </h1>
         {renderContext()}
 
-        <div className="mt-8 bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-8">
+        <div className="mt-8 card p-8">
           {phase === 'missing' && (
             <div>
-              <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-100">
+              <div className="rounded-lg bg-amber-500/10 px-4 py-3 text-sm text-amber-200 ring-1 ring-amber-500/30">
                 No replacement details found. Please start from the Search page.
               </div>
               <Link
                 to={`/jobs/${jobId}/search`}
-                className="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                className="btn-primary mt-6 inline-flex w-full"
               >
                 Go to Search
               </Link>
@@ -234,13 +230,13 @@ export default function Replace() {
 
           {(phase === 'starting' || phase === 'replacing') && (
             <div className="flex flex-col items-center py-4 text-center">
-              <div className="flex items-center gap-2 text-indigo-600">
+              <div className="flex items-center gap-2 text-paper">
                 <Spinner />
                 <span className="text-sm font-medium">
                   {phase === 'starting' ? 'Queued — starting…' : 'Replacing your files…'}
                 </span>
               </div>
-              <p className="mt-3 text-xs text-slate-400">
+              <p className="mt-3 text-xs text-paper/50">
                 {phase === 'starting'
                   ? 'Handing your job to the worker.'
                   : `This runs in the background. Elapsed: ${elapsed}s`}
@@ -249,7 +245,7 @@ export default function Replace() {
           )}
 
           {phase === 'completed' && (
-            <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-100">
+            <div className="rounded-lg bg-insert/10 px-4 py-3 text-sm text-insert ring-1 ring-insert/30">
               Done! {statusData?.totalMatches ?? 0}{' '}
               {(statusData?.totalMatches ?? 0) === 1 ? 'replacement' : 'replacements'} made.
               Taking you to the results…
@@ -258,19 +254,19 @@ export default function Replace() {
 
           {(phase === 'failed' || phase === 'error') && (
             <div>
-              <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
+              <div className="rounded-lg bg-remove/10 px-4 py-3 text-sm text-remove ring-1 ring-remove/30">
                 {error}
               </div>
               <button
                 type="button"
                 onClick={startReplace}
-                className="mt-6 w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                className="btn-primary mt-6 w-full"
               >
                 Try again
               </button>
               <Link
                 to={`/jobs/${jobId}/search`}
-                className="mt-3 block text-center text-sm text-indigo-600 hover:text-indigo-500"
+                className="mt-3 block text-center text-sm text-paper/70 hover:text-paper"
               >
                 Back to Search
               </Link>

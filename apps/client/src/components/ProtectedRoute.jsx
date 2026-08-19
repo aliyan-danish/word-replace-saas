@@ -10,7 +10,7 @@ export default function ProtectedRoute({ children }) {
   if (!isAuthenticated) {
     // `replace` avoids pushing the guarded URL onto history, so the back button
     // doesn't bounce the user between Login and the protected page.
-    return <Navigate to="/" replace />
+    return <Navigate to="/login" replace />
   }
 
   return children

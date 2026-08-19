@@ -40,15 +40,15 @@ export default function AdminRoute({ children }) {
   }, [isAuthenticated])
 
   if (!isAuthenticated) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/login" replace />
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex items-center gap-3 text-sm text-slate-500">
+      <div className="min-h-screen bg-ink flex items-center justify-center">
+        <div className="flex items-center gap-3 text-sm text-paper/60">
           <svg
-            className="h-5 w-5 animate-spin text-indigo-600"
+            className="h-5 w-5 animate-spin text-insert"
             viewBox="0 0 24 24"
             fill="none"
             aria-hidden="true"

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { apiGet, apiPatch } from '../lib/apiClient'
+import BackNav from '../components/BackNav'
 
 function Spinner() {
   return (
     <svg
-      className="h-5 w-5 animate-spin text-indigo-600"
+      className="h-5 w-5 animate-spin text-insert"
       viewBox="0 0 24 24"
       fill="none"
       aria-hidden="true"
@@ -96,16 +96,16 @@ function PlanEditor({ plan, onSaved }) {
   return (
     <form
       onSubmit={handleSave}
-      className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+      className="card p-6"
     >
-      <h2 className="text-base font-semibold text-slate-900">{plan.name}</h2>
-      <p className="mt-1 text-xs text-slate-400 font-mono truncate">{plan.id}</p>
+      <h2 className="font-display text-base font-semibold text-paper">{plan.name}</h2>
+      <p className="mt-1 truncate font-mono text-xs text-paper/50">{plan.id}</p>
 
       <div className="mt-5 space-y-4">
         <label className="block">
-          <span className="text-sm font-medium text-slate-700">
+          <span className="text-sm font-medium text-paper/80">
             Monthly job limit{' '}
-            <span className="font-normal text-slate-400">(blank = unlimited)</span>
+            <span className="font-normal text-paper/50">(blank = unlimited)</span>
           </span>
           <input
             type="number"
@@ -114,12 +114,12 @@ function PlanEditor({ plan, onSaved }) {
             value={monthlyJobLimit}
             onChange={(e) => setMonthlyJobLimit(e.target.value)}
             placeholder="Unlimited"
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="field mt-1.5"
           />
         </label>
 
         <label className="block">
-          <span className="text-sm font-medium text-slate-700">Max files per job</span>
+          <span className="text-sm font-medium text-paper/80">Max files per job</span>
           <input
             type="number"
             min="1"
@@ -127,12 +127,12 @@ function PlanEditor({ plan, onSaved }) {
             required
             value={maxFilesPerJob}
             onChange={(e) => setMaxFilesPerJob(e.target.value)}
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="field mt-1.5"
           />
         </label>
 
         <label className="block">
-          <span className="text-sm font-medium text-slate-700">Max upload size (MB)</span>
+          <span className="text-sm font-medium text-paper/80">Max upload size (MB)</span>
           <input
             type="number"
             min="0.01"
@@ -140,18 +140,18 @@ function PlanEditor({ plan, onSaved }) {
             required
             value={maxUploadMb}
             onChange={(e) => setMaxUploadMb(e.target.value)}
-            className="mt-1.5 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="field mt-1.5"
           />
         </label>
       </div>
 
       {error && (
-        <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
+        <div className="mt-4 rounded-lg bg-remove/10 px-4 py-3 text-sm text-remove ring-1 ring-remove/30">
           {error}
         </div>
       )}
       {success && (
-        <div className="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-100">
+        <div className="mt-4 rounded-lg bg-insert/10 px-4 py-3 text-sm text-insert ring-1 ring-insert/30">
           {success}
         </div>
       )}
@@ -159,7 +159,7 @@ function PlanEditor({ plan, onSaved }) {
       <button
         type="submit"
         disabled={saving}
-        className="mt-5 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        className="btn-primary mt-5"
       >
         {saving && <Spinner />}
         {saving ? 'Saving…' : 'Save'}
@@ -200,28 +200,26 @@ export default function AdminPlans() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-ink text-paper">
       <main className="mx-auto max-w-6xl px-6 py-16">
-        <Link to="/admin" className="text-sm text-indigo-600 hover:text-indigo-500">
-          ← Admin
-        </Link>
+        <BackNav to="/admin" label="Admin" />
 
-        <h1 className="mt-6 text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="mt-6 page-title">
           Manage Plans
         </h1>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-paper/60">
           Edit FREE and PRO limits. Upload size is edited in MB and saved as bytes.
         </p>
 
         {loading && (
-          <div className="mt-8 flex items-center gap-3 text-sm text-slate-500">
+          <div className="mt-8 flex items-center gap-3 text-sm text-paper/60">
             <Spinner />
             Loading plans…
           </div>
         )}
 
         {!loading && error && (
-          <div className="mt-8 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
+          <div className="mt-8 rounded-lg bg-remove/10 px-4 py-3 text-sm text-remove ring-1 ring-remove/30">
             {error}
           </div>
         )}

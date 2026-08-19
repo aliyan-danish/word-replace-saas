@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { apiPostForm, ApiError } from '../lib/apiClient'
+import BackNav from '../components/BackNav'
 
 const ACCEPTED_EXTENSIONS = ['.txt', '.zip']
 // After a successful upload we pause briefly on the summary, then move to search.
@@ -113,37 +114,35 @@ export default function Upload() {
   const isSuccess = status === 'success'
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-ink text-paper">
       <main className="mx-auto max-w-2xl px-6 py-16">
-        <Link to="/dashboard" className="text-sm text-indigo-600 hover:text-indigo-500">
-          ← Dashboard
-        </Link>
+        <BackNav to="/dashboard" label="Dashboard" />
 
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="mt-4 page-title">
           Upload
         </h1>
-        <p className="mt-2 text-sm text-slate-500">
-          Upload a single <span className="font-medium text-slate-700">.txt</span> file or
-          a <span className="font-medium text-slate-700">.zip</span> of .txt files to get
+        <p className="mt-2 text-sm text-paper/60">
+          Upload a single <span className="font-medium text-paper">.txt</span> file or
+          a <span className="font-medium text-paper">.zip</span> of .txt files to get
           started.
         </p>
 
-        <div className="mt-8 bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-8">
+        <div className="mt-8 card p-8">
           {isSuccess ? (
             <div>
-              <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-100">
+              <div className="rounded-lg bg-insert/10 px-4 py-3 text-sm text-insert ring-1 ring-insert/30">
                 Uploaded {result.totalFiles} file{result.totalFiles === 1 ? '' : 's'} (
                 {formatBytes(result.totalSize)} total). Taking you to search…
               </div>
 
-              <ul className="mt-4 divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200">
+              <ul className="mt-4 divide-y divide-ink-border rounded-lg ring-1 ring-ink-border">
                 {result.files.map((f) => (
                   <li
                     key={f.id}
                     className="flex items-center justify-between px-4 py-2.5 text-sm"
                   >
-                    <span className="truncate text-slate-700">{f.filename}</span>
-                    <span className="ml-4 shrink-0 text-slate-400">
+                    <span className="truncate text-paper/80">{f.filename}</span>
+                    <span className="ml-4 shrink-0 text-paper/40">
                       {formatBytes(f.size)}
                     </span>
                   </li>
@@ -153,7 +152,7 @@ export default function Upload() {
               <button
                 type="button"
                 onClick={goToSearch}
-                className="mt-6 w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                className="btn-primary mt-6 w-full"
               >
                 Continue to search
               </button>
@@ -161,7 +160,7 @@ export default function Upload() {
           ) : (
             <div>
               {error && (
-                <div className="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
+                <div className="mb-5 rounded-lg bg-remove/10 px-4 py-3 text-sm text-remove ring-1 ring-remove/30">
                   {error}
                 </div>
               )}
@@ -172,20 +171,20 @@ export default function Upload() {
                 onDragLeave={handleDragLeave}
                 className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition ${
                   isDragging
-                    ? 'border-indigo-400 bg-indigo-50/50'
-                    : 'border-slate-300 bg-slate-50'
+                    ? 'border-insert bg-insert/10'
+                    : 'border-ink-border bg-ink'
                 }`}
               >
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-paper/70">
                   Drag &amp; drop your file here
                 </p>
-                <p className="mt-1 text-xs text-slate-400">.txt or .zip, one file</p>
+                <p className="mt-1 text-xs text-paper/40">.txt or .zip, one file</p>
 
                 <button
                   type="button"
                   onClick={() => inputRef.current?.click()}
                   disabled={isUploading}
-                  className="mt-4 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="btn-secondary mt-4"
                 >
                   Browse files
                 </button>
@@ -200,9 +199,9 @@ export default function Upload() {
               </div>
 
               {file && (
-                <div className="mt-4 flex items-center justify-between rounded-lg bg-slate-50 px-4 py-2.5 text-sm ring-1 ring-slate-200">
-                  <span className="truncate text-slate-700">{file.name}</span>
-                  <span className="ml-4 shrink-0 text-slate-400">
+                <div className="mt-4 flex items-center justify-between rounded-lg bg-ink px-4 py-2.5 text-sm ring-1 ring-ink-border">
+                  <span className="truncate text-paper/80">{file.name}</span>
+                  <span className="ml-4 shrink-0 text-paper/40">
                     {formatBytes(file.size)}
                   </span>
                 </div>
@@ -212,7 +211,7 @@ export default function Upload() {
                 type="button"
                 onClick={handleUpload}
                 disabled={!file || isUploading}
-                className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-primary mt-6 flex w-full gap-2"
               >
                 {isUploading && (
                   <svg

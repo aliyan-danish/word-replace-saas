@@ -50,7 +50,7 @@ function handleUnauthorized() {
   if (onUnauthorized) {
     onUnauthorized();
   } else if (typeof window !== 'undefined') {
-    window.location.assign('/');
+    window.location.assign('/login');
   }
 }
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { apiDownload, ApiError } from '../lib/apiClient'
+import BackNav from '../components/BackNav'
 
 export default function Result() {
   const { jobId } = useParams()
@@ -48,19 +49,17 @@ export default function Result() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-ink text-paper">
       <main className="mx-auto max-w-2xl px-6 py-16">
-        <Link to="/dashboard" className="text-sm text-indigo-600 hover:text-indigo-500">
-          ← Dashboard
-        </Link>
+        <BackNav to="/dashboard" label="Dashboard" />
 
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="mt-4 page-title">
           Result
         </h1>
 
-        <div className="mt-8 bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-8">
+        <div className="mt-8 card p-8">
           {hasSummary && (
-            <div className="mb-6 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-100">
+            <div className="mb-6 rounded-lg bg-insert/10 px-4 py-3 text-sm text-insert ring-1 ring-insert/30">
               {summary.replaceWord === '' ? (
                 <>
                   Deleted {summary.totalMatches ?? 0}{' '}
@@ -79,12 +78,12 @@ export default function Result() {
             </div>
           )}
 
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-paper/60">
             Your replaced files are ready. Download them as a zip archive.
           </p>
 
           {error && (
-            <div className="mt-5 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
+            <div className="mt-5 rounded-lg bg-remove/10 px-4 py-3 text-sm text-remove ring-1 ring-remove/30">
               {error}
             </div>
           )}
@@ -93,7 +92,7 @@ export default function Result() {
             type="button"
             onClick={handleDownload}
             disabled={downloading}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn-primary mt-6 flex w-full gap-2"
           >
             {downloading && (
               <svg
@@ -122,10 +121,10 @@ export default function Result() {
         </div>
 
         <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <Link to="/upload" className="text-indigo-600 hover:text-indigo-500">
+          <Link to="/upload" className="text-sm text-paper/70 hover:text-paper">
             Upload another file
           </Link>
-          <Link to="/jobs" className="text-indigo-600 hover:text-indigo-500">
+          <Link to="/jobs" className="text-sm text-paper/70 hover:text-paper">
             View job history
           </Link>
         </div>

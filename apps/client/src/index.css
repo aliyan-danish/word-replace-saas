@@ -1,3 +1,82 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --ink: #14171A;
+  --ink-elevated: #1C2024;
+  --ink-border: #2A3036;
+  --paper: #EDEDE9;
+  --remove: #E5484D;
+  --insert: #3DD68C;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-ink font-sans text-paper antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--insert);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-paper px-4 py-2.5 text-sm font-semibold text-ink shadow-sm transition hover:bg-paper/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-insert focus-visible:ring-offset-2 focus-visible:ring-offset-ink disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-ink-border bg-transparent px-4 py-2.5 text-sm font-medium text-paper transition hover:bg-ink-elevated focus:outline-none focus-visible:ring-2 focus-visible:ring-insert focus-visible:ring-offset-2 focus-visible:ring-offset-ink disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-ink-border bg-ink px-3.5 py-2.5 text-sm text-paper placeholder:text-paper/40 shadow-none transition focus:border-insert focus:outline-none focus-visible:ring-2 focus-visible:ring-insert/30;
+  }
+
+  .select-field {
+    @apply rounded-lg border border-ink-border bg-ink px-2 py-1.5 text-sm text-paper transition focus:border-insert focus:outline-none focus-visible:ring-2 focus-visible:ring-insert/30 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .card {
+    @apply rounded-2xl bg-ink-elevated ring-1 ring-ink-border;
+  }
+
+  .page-title {
+    @apply font-display text-2xl font-semibold tracking-tight text-paper;
+  }
+}
+
+/* Hero diff: strikethrough + fade-in. Disabled when the user prefers reduced motion. */
+.diff-out {
+  color: var(--remove);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+.diff-in {
+  color: var(--insert);
+  animation: diff-fade-in 0.45s ease-out both;
+}
+
+@keyframes diff-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diff-in {
+    animation: none;
+  }
+}

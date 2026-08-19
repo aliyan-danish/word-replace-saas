@@ -38,7 +38,7 @@ export default function Register() {
 
       setSuccess('Account created! Redirecting to sign in…')
       // Give the user a moment to read the success message before redirecting.
-      setTimeout(() => navigate('/'), 1200)
+      setTimeout(() => navigate('/login'), 1200)
     } catch {
       setError('Unable to reach the server. Please try again.')
     } finally {
@@ -47,24 +47,24 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-ink px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Word Replace Tool
-          </h1>
-          <p className="mt-2 text-sm text-slate-500">Create your account</p>
+          <Link to="/" className="font-display text-2xl font-semibold tracking-tight text-paper">
+            Word Replace
+          </Link>
+          <p className="mt-2 text-sm text-paper/60">Create your account</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-8">
+        <div className="card p-8">
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {error && (
-              <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
+              <div className="rounded-lg bg-remove/10 px-4 py-3 text-sm text-remove ring-1 ring-remove/30">
                 {error}
               </div>
             )}
             {success && (
-              <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700 ring-1 ring-emerald-100">
+              <div className="rounded-lg bg-insert/10 px-4 py-3 text-sm text-insert ring-1 ring-insert/30">
                 {success}
               </div>
             )}
@@ -72,7 +72,7 @@ export default function Register() {
             <div>
               <label
                 htmlFor="email"
-                className="block text-sm font-medium text-slate-700 mb-1.5"
+                className="block text-sm font-medium text-paper/80 mb-1.5"
               >
                 Email
               </label>
@@ -83,7 +83,7 @@ export default function Register() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="field"
                 placeholder="you@example.com"
               />
             </div>
@@ -91,7 +91,7 @@ export default function Register() {
             <div>
               <label
                 htmlFor="password"
-                className="block text-sm font-medium text-slate-700 mb-1.5"
+                className="block text-sm font-medium text-paper/80 mb-1.5"
               >
                 Password
               </label>
@@ -102,7 +102,7 @@ export default function Register() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="field"
                 placeholder="••••••••"
               />
             </div>
@@ -110,18 +110,18 @@ export default function Register() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn-primary w-full"
             >
               {submitting ? 'Creating account…' : 'Create account'}
             </button>
           </form>
         </div>
 
-        <p className="mt-6 text-center text-sm text-slate-500">
+        <p className="mt-6 text-center text-sm text-paper/60">
           Already have an account?{' '}
           <Link
-            to="/"
-            className="font-medium text-indigo-600 hover:text-indigo-500"
+            to="/login"
+            className="font-medium text-insert hover:text-insert/80"
           >
             Sign in
           </Link>

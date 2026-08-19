@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiGet, ApiError } from '../lib/apiClient'
+import BackNav from '../components/BackNav'
 
 // Tailwind classes for the status badge, one distinct look per JobStatus.
 const STATUS_BADGE = {
-  PENDING: 'bg-amber-50 text-amber-700 ring-amber-100',
-  REPLACING: 'bg-indigo-50 text-indigo-700 ring-indigo-100',
-  COMPLETED: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
-  FAILED: 'bg-red-50 text-red-700 ring-red-100',
+  PENDING: 'bg-amber-500/15 text-amber-300 ring-amber-500/30',
+  REPLACING: 'bg-paper/10 text-paper/80 ring-ink-border',
+  COMPLETED: 'bg-insert/15 text-insert ring-insert/30',
+  FAILED: 'bg-remove/15 text-remove ring-remove/30',
 }
 
 function StatusBadge({ status }) {
-  const cls = STATUS_BADGE[status] || 'bg-slate-50 text-slate-600 ring-slate-200'
+  const cls = STATUS_BADGE[status] || 'bg-ink-elevated text-paper/60 ring-ink-border'
   return (
     <span
       className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ${cls}`}
@@ -42,14 +43,14 @@ function JobCardInner({ job }) {
   return (
     <>
       <div className="flex items-start justify-between gap-3">
-        <span className="truncate font-medium text-slate-900">
+        <span className="truncate font-medium text-paper">
           {job.originalName}
         </span>
         <StatusBadge status={job.status} />
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-paper/50">
+        <span className="rounded bg-ink px-1.5 py-0.5 text-paper/70">
           {job.isZip ? 'Zip' : 'Single file'}
         </span>
         <span>
@@ -60,13 +61,13 @@ function JobCardInner({ job }) {
       </div>
 
       {showSummary && (
-        <p className="mt-2 text-sm text-slate-600">
-          <span className="font-medium text-slate-700">
-            &ldquo;{job.searchWord}&rdquo;
+        <p className="mt-2 text-sm text-paper/70">
+          <span className="font-mono text-remove line-through">
+            {job.searchWord}
           </span>{' '}
           →{' '}
-          <span className="font-medium text-slate-700">
-            {job.replaceWord === '' ? '(removed)' : `“${job.replaceWord}”`}
+          <span className="font-mono text-insert">
+            {job.replaceWord === '' ? '(removed)' : job.replaceWord}
           </span>
           {job.totalMatches != null && (
             <>
@@ -78,11 +79,11 @@ function JobCardInner({ job }) {
       )}
 
       {job.status === 'FAILED' && job.errorMessage && (
-        <p className="mt-2 text-xs text-red-600">{job.errorMessage}</p>
+        <p className="mt-2 text-xs text-remove">{job.errorMessage}</p>
       )}
 
       {job.status === 'REPLACING' && (
-        <p className="mt-2 text-xs text-indigo-600">Processing…</p>
+        <p className="mt-2 text-xs text-paper/50">Processing…</p>
       )}
     </>
   )
@@ -91,7 +92,7 @@ function JobCardInner({ job }) {
 function JobItem({ job }) {
   const to = destinationFor(job)
   const baseCard =
-    'block rounded-xl bg-white p-5 shadow-sm ring-1 ring-slate-200'
+    'block rounded-xl bg-ink-elevated p-5 ring-1 ring-ink-border'
 
   if (!to) {
     // REPLACING: render as a non-clickable, dimmed row.
@@ -105,7 +106,7 @@ function JobItem({ job }) {
   return (
     <Link
       to={to}
-      className={`${baseCard} transition hover:shadow hover:ring-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+      className={`${baseCard} transition hover:ring-insert/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-insert`}
     >
       <JobCardInner job={job} />
     </Link>
@@ -115,7 +116,7 @@ function JobItem({ job }) {
 function Spinner() {
   return (
     <svg
-      className="h-6 w-6 animate-spin text-indigo-600"
+      className="h-6 w-6 animate-spin text-insert"
       viewBox="0 0 24 24"
       fill="none"
       aria-hidden="true"
@@ -164,13 +165,11 @@ export default function Jobs() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-ink text-paper">
       <main className="mx-auto max-w-3xl px-6 py-16">
-        <Link to="/dashboard" className="text-sm text-indigo-600 hover:text-indigo-500">
-          ← Dashboard
-        </Link>
+        <BackNav to="/dashboard" label="Dashboard" />
 
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">
+        <h1 className="mt-4 page-title">
           Job History
         </h1>
 
@@ -180,25 +179,25 @@ export default function Jobs() {
           </div>
         ) : error ? (
           <div className="mt-8">
-            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-100">
+            <div className="rounded-lg bg-remove/10 px-4 py-3 text-sm text-remove ring-1 ring-remove/30">
               {error}
             </div>
             <button
               type="button"
               onClick={fetchJobs}
-              className="mt-4 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              className="btn-primary mt-4"
             >
               Retry
             </button>
           </div>
         ) : jobs.length === 0 ? (
-          <div className="mt-8 rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
-            <p className="text-sm text-slate-500">
+          <div className="mt-8 card p-8 text-center">
+            <p className="text-sm text-paper/60">
               No jobs yet — upload a file to get started.
             </p>
             <Link
               to="/upload"
-              className="mt-6 inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              className="btn-primary mt-6"
             >
               Upload a file
             </Link>
