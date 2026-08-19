@@ -39,11 +39,21 @@ export default function Replace() {
 
   // Read the params Search.jsx passed via navigate(path, { state }).
   const params = location.state
-  const hasValidParams =
-    !!params &&
-    typeof params.word === 'string' &&
-    params.word.trim() !== '' &&
-    typeof params.replacement === 'string'
+  const pairs = Array.isArray(params?.pairs)
+    ? params.pairs.filter(
+        (pair) =>
+          pair &&
+          typeof pair.word === 'string' &&
+          pair.word.trim() !== '' &&
+          typeof pair.replacement === 'string'
+      )
+    : params &&
+        typeof params.word === 'string' &&
+        params.word.trim() !== '' &&
+        typeof params.replacement === 'string'
+      ? [{ word: params.word, replacement: params.replacement }]
+      : []
+  const hasValidParams = pairs.length > 0
 
   // phase: 'missing' | 'starting' | 'replacing' | 'completed' | 'failed' | 'error'
   //  - 'error'  = the initial replace POST failed (never started polling)
@@ -92,6 +102,7 @@ export default function Replace() {
               totalMatches: data.totalMatches,
               searchWord: data.searchWord,
               replaceWord: data.replaceWord,
+              wordPairs: data.wordPairs || pairs,
             },
           })
         }, SUCCESS_REDIRECT_MS)
@@ -133,8 +144,7 @@ export default function Replace() {
     try {
       // 202 Accepted — the worker does the actual work; we then poll for status.
       await apiPost(`/api/jobs/${jobId}/replace`, {
-        word: params.word,
-        replacement: params.replacement,
+        pairs,
         caseSensitive: Boolean(params.caseSensitive),
         wholeWord: Boolean(params.wholeWord),
       })
@@ -178,28 +188,31 @@ export default function Replace() {
   const renderContext = () => {
     if (!hasValidParams) return null
     return (
-      <p className="mt-2 text-sm text-paper/60">
-        {params.replacement === '' ? (
-          <>
-            Deleting{' '}
-            <span className="font-mono font-medium text-remove">
-              {params.word}
-            </span>{' '}
-            from your files
-          </>
-        ) : (
-          <>
-            Replacing{' '}
-            <span className="font-mono font-medium text-remove">
-              {params.word}
-            </span>{' '}
-            with{' '}
-            <span className="font-mono font-medium text-insert">
-              {params.replacement}
-            </span>
-          </>
-        )}
-      </p>
+      <ul className="mt-2 space-y-1 text-sm text-paper/60">
+        {pairs.map((pair) => (
+          <li key={pair.word}>
+            {pair.replacement === '' ? (
+              <>
+                Deleting{' '}
+                <span className="font-mono font-medium text-remove">
+                  {pair.word}
+                </span>
+              </>
+            ) : (
+              <>
+                Replacing{' '}
+                <span className="font-mono font-medium text-remove">
+                  {pair.word}
+                </span>{' '}
+                with{' '}
+                <span className="font-mono font-medium text-insert">
+                  {pair.replacement}
+                </span>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
     )
   }
 

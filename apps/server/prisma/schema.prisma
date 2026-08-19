@@ -66,6 +66,11 @@ model Job {
   isZip           Boolean   @default(false)
   searchWord      String?
   replaceWord     String?
+  // Opaque list of { word, replacement, caseSensitive, wholeWord }. JSON not a
+  // related table: we never query/join on individual pairs. Flags are stored per
+  // pair so a later per-pair UI does not need another migration; today's UI copies
+  // the job's shared toggles onto every pair at replace time.
+  wordPairs       Json?
   totalMatches    Int?
   // Populated by the replace worker when a job fails, so the failure reason is
   // visible (e.g. via the status endpoint) instead of being lost to the logs.

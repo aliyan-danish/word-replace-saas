@@ -4,7 +4,13 @@ const prisma = require('../lib/prisma');
 const { replaceQueue } = require('../lib/queue');
 // Search still runs inline (read-only + cheap); it shares the regex builder with the
 // replace worker via this module so the two can never diverge.
-const { buildSearchRegex } = require('../lib/textReplace');
+const {
+  buildMultiWordRegex,
+  findPairForMatch,
+} = require('../lib/textReplace');
+
+// Cap how many pairs one job can carry so a huge payload can't explode the regex.
+const MAX_WORD_PAIRS = 20;
 // Subscription/trial enforcement for uploads. PRO_PLAN_MISSING lets us surface a clear
 // "run the seed" 500 if the backfill can't find the PRO plan.
 const { getEnforcedSubscription, PRO_PLAN_MISSING } = require('../lib/subscription');
@@ -88,6 +94,81 @@ function extractTxtFilesFromZip(buffer, maxFiles) {
 
 // Signals a client-fixable problem with the zip; mapped to HTTP 400 in the handler.
 class ZipError extends Error {}
+
+// Accept the new `words` array, or a legacy single `word` string.
+function normalizeSearchWords(body) {
+  if (Array.isArray(body.words)) return body.words;
+  if (typeof body.word === 'string') return [body.word];
+  return null;
+}
+
+// Accept the new `pairs` array, or a legacy `{ word, replacement }`.
+function normalizeReplacePairs(body) {
+  if (Array.isArray(body.pairs)) return body.pairs;
+  if (typeof body.word === 'string' && typeof body.replacement === 'string') {
+    return [{ word: body.word, replacement: body.replacement }];
+  }
+  return null;
+}
+
+// Shared validation for search words / replace-pair words. Returns { words } or { error }.
+function parseWordList(rawWords, caseSensitive) {
+  if (!Array.isArray(rawWords) || rawWords.length === 0) {
+    return { error: 'Provide at least one non-empty search word.' };
+  }
+  if (rawWords.length > MAX_WORD_PAIRS) {
+    return {
+      error: `A job can include at most ${MAX_WORD_PAIRS} word pairs.`,
+    };
+  }
+
+  const words = [];
+  const seen = new Set();
+  for (let i = 0; i < rawWords.length; i += 1) {
+    const value = rawWords[i];
+    if (typeof value !== 'string' || value.trim() === '') {
+      return { error: 'Every search word must be a non-empty string.' };
+    }
+    const word = value.trim();
+    const key = caseSensitive ? word : word.toLowerCase();
+    if (seen.has(key)) {
+      return { error: 'Each search word must be unique within the job.' };
+    }
+    seen.add(key);
+    words.push(word);
+  }
+  return { words };
+}
+
+// Stamp the job's shared toggles onto every pair so a later per-pair UI can
+// read them without another schema change.
+function stampPairFlags(pairs, caseSensitive, wholeWord) {
+  return pairs.map((pair) => ({
+    word: pair.word,
+    replacement: pair.replacement,
+    caseSensitive,
+    wholeWord,
+  }));
+}
+
+// Count occurrences per word in ORIGINAL content using the same combined regex
+// the worker will use to replace, so search totals and replace totals cannot diverge.
+function countByWord(content, words, { caseSensitive, wholeWord }) {
+  const regex = buildMultiWordRegex(words, { caseSensitive, wholeWord });
+  const lookupPairs = words.map((word) => ({ word }));
+  const counts = Object.fromEntries(
+    words.map((word) => [caseSensitive ? word : word.toLowerCase(), 0])
+  );
+  regex.lastIndex = 0;
+  const matches = content.match(regex) ?? [];
+  for (const matched of matches) {
+    const pair = findPairForMatch(matched, lookupPairs, caseSensitive);
+    if (!pair) continue;
+    const key = caseSensitive ? pair.word : pair.word.toLowerCase();
+    counts[key] += 1;
+  }
+  return counts;
+}
 
 async function uploadJob(req, res) {
   try {
@@ -207,19 +288,17 @@ async function searchJob(req, res) {
     const { jobId } = req.params;
     const body = req.body || {};
 
-    // 1. Validate the word: must be a non-empty string once trimmed.
-    if (typeof body.word !== 'string' || body.word.trim() === '') {
-      return res
-        .status(400)
-        .json({ error: 'A non-empty "word" string is required.' });
-    }
-
-    const word = body.word.trim();
     // Normalize optional toggles to real booleans so the echoed response is clean.
     const caseSensitive = Boolean(body.caseSensitive);
     const wholeWord = Boolean(body.wholeWord);
 
-    // 2. Fetch the job with its files. We scope ownership after fetching so we can
+    const parsed = parseWordList(normalizeSearchWords(body), caseSensitive);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    const { words } = parsed;
+
+    // Fetch the job with its files. We scope ownership after fetching so we can
     // return an identical 404 whether the job is missing or owned by someone else
     // (never reveal that another user's job exists).
     const job = await prisma.job.findUnique({
@@ -231,24 +310,36 @@ async function searchJob(req, res) {
       return res.status(404).json({ error: 'Job not found.' });
     }
 
-    // 3 & 4. Build the pattern via the shared helper (see buildSearchRegex).
-    const regex = buildSearchRegex(word, { caseSensitive, wholeWord });
-
-    // 5. Count occurrences per file. This endpoint never writes to the DB (req. 6),
-    // so it can be re-run freely as the user tweaks the word or toggles.
+    // Count against ORIGINAL content with the same combined regex the worker uses,
+    // so per-word totals match what replace will actually change.
     let totalOccurrences = 0;
+    const wordTotals = Object.fromEntries(
+      words.map((word) => [caseSensitive ? word : word.toLowerCase(), 0])
+    );
+
     const files = job.files.map((file) => {
-      const occurrences = file.content.match(regex)?.length ?? 0;
-      totalOccurrences += occurrences;
-      return { id: file.id, filename: file.filename, occurrences };
+      const byKey = countByWord(file.content, words, { caseSensitive, wholeWord });
+      const byWord = words.map((word) => {
+        const key = caseSensitive ? word : word.toLowerCase();
+        const occurrences = byKey[key] ?? 0;
+        wordTotals[key] += occurrences;
+        totalOccurrences += occurrences;
+        return { word, occurrences };
+      });
+      const occurrences = byWord.reduce((sum, item) => sum + item.occurrences, 0);
+      return { id: file.id, filename: file.filename, occurrences, words: byWord };
     });
 
     return res.status(200).json({
       jobId: job.id,
-      word,
+      words,
       caseSensitive,
       wholeWord,
       totalOccurrences,
+      byWord: words.map((word) => ({
+        word,
+        totalOccurrences: wordTotals[caseSensitive ? word : word.toLowerCase()] ?? 0,
+      })),
       files,
     });
   } catch (err) {
@@ -265,25 +356,43 @@ async function replaceJob(req, res) {
     const { jobId } = req.params;
     const body = req.body || {};
 
-    // 1. Validate word (non-empty after trim) and replacement (must be a string;
-    // "" is valid and means "delete the word"; undefined/missing is a 400).
-    if (typeof body.word !== 'string' || body.word.trim() === '') {
-      return res
-        .status(400)
-        .json({ error: 'A non-empty "word" string is required.' });
-    }
-    if (typeof body.replacement !== 'string') {
-      return res.status(400).json({
-        error: 'A "replacement" string is required (use "" to delete the word).',
-      });
-    }
-
-    const word = body.word.trim();
-    const replacement = body.replacement;
     const caseSensitive = Boolean(body.caseSensitive);
     const wholeWord = Boolean(body.wholeWord);
 
-    // 2. Ownership check — identical to searchJob: a missing job and someone else's
+    const rawPairs = normalizeReplacePairs(body);
+    if (!rawPairs) {
+      return res.status(400).json({
+        error: 'A "pairs" array of { word, replacement } is required.',
+      });
+    }
+
+    const parsed = parseWordList(
+      rawPairs.map((pair) => (pair && typeof pair.word === 'string' ? pair.word : '')),
+      caseSensitive
+    );
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+
+    for (const pair of rawPairs) {
+      if (!pair || typeof pair.replacement !== 'string') {
+        return res.status(400).json({
+          error: 'Each pair needs a "replacement" string (use "" to delete the word).',
+        });
+      }
+    }
+
+    // Copy the shared job toggles onto every pair (stored for a future per-pair UI).
+    const pairs = stampPairFlags(
+      parsed.words.map((word, i) => ({
+        word,
+        replacement: rawPairs[i].replacement,
+      })),
+      caseSensitive,
+      wholeWord
+    );
+
+    // Ownership check — identical to searchJob: a missing job and someone else's
     // job both return the same generic 404. (No need to include files here; the worker
     // fetches them fresh when it runs.)
     const job = await prisma.job.findUnique({ where: { id: jobId } });
@@ -292,7 +401,7 @@ async function replaceJob(req, res) {
       return res.status(404).json({ error: 'Job not found.' });
     }
 
-    // 3. The actual regex/replace work is heavy, so it's offloaded to the BullMQ
+    // The actual regex/replace work is heavy, so it's offloaded to the BullMQ
     // "replace-jobs" worker (per the architecture rule). We mark the job REPLACING
     // BEFORE enqueueing so a client polling /status never sees a stale COMPLETED/PENDING
     // between enqueue and the worker picking it up. Clear any prior errorMessage so a
@@ -302,17 +411,16 @@ async function replaceJob(req, res) {
       data: { status: 'REPLACING', errorMessage: null },
     });
 
-    // 4. Enqueue with just the ids + parameters. The worker re-reads file content from
+    // Enqueue with just the ids + parameters. The worker re-reads file content from
     // the DB rather than trusting anything stale in the payload.
     await replaceQueue.add('replace', {
       jobId: job.id,
-      word,
-      replacement,
+      pairs,
       caseSensitive,
       wholeWord,
     });
 
-    // 5. Respond immediately; the client polls GET /:jobId/status for completion.
+    // Respond immediately; the client polls GET /:jobId/status for completion.
     return res.status(202).json({
       jobId: job.id,
       status: 'REPLACING',
@@ -345,6 +453,7 @@ async function statusJob(req, res) {
     if (job.totalMatches != null) payload.totalMatches = job.totalMatches;
     if (job.searchWord != null) payload.searchWord = job.searchWord;
     if (job.replaceWord != null) payload.replaceWord = job.replaceWord;
+    if (job.wordPairs != null) payload.wordPairs = job.wordPairs;
     // Surface the failure reason when a job has failed (extra beyond the base spec,
     // but useful for a polling client).
     if (job.status === 'FAILED' && job.errorMessage) payload.errorMessage = job.errorMessage;
@@ -441,6 +550,7 @@ async function listJobs(req, res) {
         totalMatches: job.totalMatches,
         searchWord: job.searchWord,
         replaceWord: job.replaceWord,
+        wordPairs: job.wordPairs,
       };
       // Same pattern as statusJob: only surface the failure reason for FAILED jobs.
       if (job.status === 'FAILED' && job.errorMessage) {

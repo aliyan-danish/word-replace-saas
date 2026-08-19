@@ -9,10 +9,14 @@ export default function Result() {
 
   // Passed by Replace.jsx; may be absent on a direct visit or after a reload.
   const summary = location.state
-  const hasSummary =
-    !!summary &&
-    typeof summary.searchWord === 'string' &&
-    typeof summary.replaceWord === 'string'
+  const pairs = Array.isArray(summary?.wordPairs) && summary.wordPairs.length
+    ? summary.wordPairs
+    : summary &&
+        typeof summary.searchWord === 'string' &&
+        typeof summary.replaceWord === 'string'
+      ? [{ word: summary.searchWord, replacement: summary.replaceWord }]
+      : []
+  const hasSummary = pairs.length > 0
 
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
@@ -60,21 +64,28 @@ export default function Result() {
         <div className="mt-8 card p-8">
           {hasSummary && (
             <div className="mb-6 rounded-lg bg-insert/10 px-4 py-3 text-sm text-insert ring-1 ring-insert/30">
-              {summary.replaceWord === '' ? (
-                <>
-                  Deleted {summary.totalMatches ?? 0}{' '}
-                  {(summary.totalMatches ?? 0) === 1 ? 'occurrence' : 'occurrences'} of{' '}
-                  <span className="font-medium">&ldquo;{summary.searchWord}&rdquo;</span>.
-                </>
-              ) : (
-                <>
-                  Replaced {summary.totalMatches ?? 0}{' '}
-                  {(summary.totalMatches ?? 0) === 1 ? 'occurrence' : 'occurrences'} of{' '}
-                  <span className="font-medium">&ldquo;{summary.searchWord}&rdquo;</span>{' '}
-                  with{' '}
-                  <span className="font-medium">&ldquo;{summary.replaceWord}&rdquo;</span>.
-                </>
-              )}
+              <p>
+                Replaced {summary.totalMatches ?? 0}{' '}
+                {(summary.totalMatches ?? 0) === 1 ? 'occurrence' : 'occurrences'}.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {pairs.map((pair) => (
+                  <li key={pair.word}>
+                    {pair.replacement === '' ? (
+                      <>
+                        Deleted{' '}
+                        <span className="font-medium">&ldquo;{pair.word}&rdquo;</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium">&ldquo;{pair.word}&rdquo;</span>
+                        {' → '}
+                        <span className="font-medium">&ldquo;{pair.replacement}&rdquo;</span>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

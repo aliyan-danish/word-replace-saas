@@ -36,9 +36,42 @@ function destinationFor(job) {
   return null // REPLACING (and any unknown status) is not clickable
 }
 
+function PairSummary({ job }) {
+  const pairs =
+    Array.isArray(job.wordPairs) && job.wordPairs.length
+      ? job.wordPairs
+      : job.searchWord != null
+        ? [{ word: job.searchWord, replacement: job.replaceWord }]
+        : []
+
+  if (pairs.length === 0) return null
+
+  return (
+    <div className="mt-2 space-y-1">
+      {pairs.map((pair, index) => (
+        <p key={`${pair.word}-${index}`} className="text-sm text-paper/70">
+          <span className="font-mono text-remove line-through">
+            {pair.word}
+          </span>{' '}
+          →{' '}
+          <span className="font-mono text-insert">
+            {pair.replacement === '' ? '(removed)' : pair.replacement}
+          </span>
+        </p>
+      ))}
+      {job.totalMatches != null && (
+        <p className="text-sm text-paper/70">
+          {job.totalMatches} {job.totalMatches === 1 ? 'match' : 'matches'}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function JobCardInner({ job }) {
   const showSummary =
-    (job.status === 'COMPLETED' || job.status === 'FAILED') && job.searchWord != null
+    (job.status === 'COMPLETED' || job.status === 'FAILED') &&
+    (job.searchWord != null || (Array.isArray(job.wordPairs) && job.wordPairs.length > 0))
 
   return (
     <>
@@ -60,23 +93,7 @@ function JobCardInner({ job }) {
         <span>{formatDate(job.createdAt)}</span>
       </div>
 
-      {showSummary && (
-        <p className="mt-2 text-sm text-paper/70">
-          <span className="font-mono text-remove line-through">
-            {job.searchWord}
-          </span>{' '}
-          →{' '}
-          <span className="font-mono text-insert">
-            {job.replaceWord === '' ? '(removed)' : job.replaceWord}
-          </span>
-          {job.totalMatches != null && (
-            <>
-              {' '}
-              · {job.totalMatches} {job.totalMatches === 1 ? 'match' : 'matches'}
-            </>
-          )}
-        </p>
-      )}
+      {showSummary && <PairSummary job={job} />}
 
       {job.status === 'FAILED' && job.errorMessage && (
         <p className="mt-2 text-xs text-remove">{job.errorMessage}</p>

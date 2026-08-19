@@ -7,16 +7,40 @@ const prisma = require('../lib/prisma');
 const { connection, REPLACE_QUEUE_NAME } = require('../lib/queue');
 // Reuse the SAME helpers the controller/search use, so replace matches search exactly.
 const {
-  buildSearchRegex,
-  escapeReplacementDollarSigns,
+  buildMultiWordRegex,
+  findPairForMatch,
   applyCasePattern,
 } = require('../lib/textReplace');
+
+// Resolve queue payload to a pairs array. New jobs send `pairs`; older queued jobs
+// still have a single word/replacement.
+function resolvePairs(data) {
+  if (Array.isArray(data.pairs) && data.pairs.length > 0) {
+    return data.pairs;
+  }
+  if (typeof data.word === 'string') {
+    return [
+      {
+        word: data.word,
+        replacement: data.replacement ?? '',
+        caseSensitive: Boolean(data.caseSensitive),
+        wholeWord: Boolean(data.wholeWord),
+      },
+    ];
+  }
+  return [];
+}
 
 // The processor for a single replace job. Anything it throws marks that one job as
 // failed (handled below) but never stops the worker from processing future jobs.
 async function processReplaceJob(job) {
-  const { jobId, word, replacement, caseSensitive, wholeWord } = job.data;
+  const { jobId, caseSensitive, wholeWord } = job.data;
+  const pairs = resolvePairs(job.data);
   console.log(`[replace-worker] START queue-job ${job.id} → db-job ${jobId}`);
+
+  if (pairs.length === 0) {
+    throw new Error('Replace job is missing word pairs.');
+  }
 
   // Fetch the job + files fresh from the DB. We only trust ids + parameters from the
   // payload, never stale content.
@@ -28,23 +52,36 @@ async function processReplaceJob(job) {
     throw new Error(`Job ${jobId} no longer exists.`);
   }
 
-  // Same regex as search. Always replace from the ORIGINAL content so re-runs
-  // overwrite cleanly instead of compounding.
-  const regex = buildSearchRegex(word, { caseSensitive, wholeWord });
+  // ONE combined regex over ORIGINAL content. Sequential per-pair replace would
+  // cascade (apple→banana then banana→cherry turns apple into cherry).
+  const regex = buildMultiWordRegex(
+    pairs.map((pair) => pair.word),
+    { caseSensitive, wholeWord }
+  );
 
   const perFile = dbJob.files.map((file) => {
+    regex.lastIndex = 0;
     const replacements = file.content.match(regex)?.length ?? 0;
-    // Case-sensitive: insert the typed replacement literally (existing behavior).
-    // Case-insensitive: copy each match's simple case pattern onto the replacement.
-    // Function replacer: $ in the return value is literal, so no $$ escaping here.
-    const replacedContent = caseSensitive
-      ? file.content.replace(regex, escapeReplacementDollarSigns(replacement))
-      : file.content.replace(regex, (matched) =>
-          applyCasePattern(matched, replacement)
-        );
+    regex.lastIndex = 0;
+    // Function replacer so each match can look up its own pair. $ is literal here,
+    // so we do not $$ -escape. Case-sensitive still inserts the typed replacement;
+    // case-insensitive still uses applyCasePattern unchanged.
+    const replacedContent = file.content.replace(regex, (matched) => {
+      const pair = findPairForMatch(matched, pairs, caseSensitive);
+      if (!pair) return matched;
+      if (caseSensitive) return pair.replacement;
+      return applyCasePattern(matched, pair.replacement);
+    });
     return { id: file.id, replacements, replacedContent };
   });
   const totalReplacements = perFile.reduce((sum, f) => sum + f.replacements, 0);
+
+  // Keep searchWord/replaceWord as a short summary for older clients; wordPairs is
+  // the real list (flags included on each pair).
+  const searchWord =
+    pairs.length === 1 ? pairs[0].word : pairs.map((p) => p.word).join(', ');
+  const replaceWord =
+    pairs.length === 1 ? pairs[0].replacement : pairs.map((p) => p.replacement).join(', ');
 
   // Single transaction: per-file results + job completion, mirroring the old inline
   // logic. Clear errorMessage in case this is a retry of a previously-failed job.
@@ -59,8 +96,9 @@ async function processReplaceJob(job) {
       where: { id: dbJob.id },
       data: {
         status: 'COMPLETED',
-        searchWord: word,
-        replaceWord: replacement,
+        searchWord,
+        replaceWord,
+        wordPairs: pairs,
         totalMatches: totalReplacements,
         errorMessage: null,
       },

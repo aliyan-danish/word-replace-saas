@@ -25,6 +25,40 @@ function buildSearchRegex(word, { caseSensitive, wholeWord }) {
   return new RegExp(pattern, flags);
 }
 
+// One regex for every target word so replace is a single pass over ORIGINAL content.
+// Longer words are listed first so, when whole-word is off, "category" wins over "cat"
+// at the same starting position.
+//
+// Known limitation when wholeWord is OFF: overlapping / substring pairs are not fully
+// solvable. Longest-first helps at the same start index, but pairs like "ca"+"at" in
+// "cat" still leave one match unused. Whole-word matching avoids the cat/category
+// class of mistakes; we are not trying to solve every overlap here.
+function buildMultiWordRegex(words, { caseSensitive, wholeWord }) {
+  const unique = [];
+  const seen = new Set();
+  for (const word of words) {
+    const key = caseSensitive ? word : word.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(word);
+  }
+  unique.sort((a, b) => b.length - a.length);
+  const alts = unique.map((word) => {
+    const escaped = escapeRegex(word);
+    return wholeWord ? `\\b${escaped}\\b` : escaped;
+  });
+  const flags = caseSensitive ? 'g' : 'gi';
+  return new RegExp(`(?:${alts.join('|')})`, flags);
+}
+
+function findPairForMatch(matched, pairs, caseSensitive) {
+  return pairs.find((pair) =>
+    caseSensitive
+      ? pair.word === matched
+      : pair.word.toLowerCase() === matched.toLowerCase()
+  );
+}
+
 // String.replace() treats $ specially in the replacement argument ($&, $1, $$, etc.).
 // Doubling each $ ($ -> $$) makes the replacement insert literally, so a value like
 // "$5" is written as "$5" rather than being interpreted as a replacement pattern.
@@ -67,6 +101,8 @@ function applyCasePattern(matchedText, replacementText) {
 module.exports = {
   escapeRegex,
   buildSearchRegex,
+  buildMultiWordRegex,
+  findPairForMatch,
   escapeReplacementDollarSigns,
   applyCasePattern,
 };
