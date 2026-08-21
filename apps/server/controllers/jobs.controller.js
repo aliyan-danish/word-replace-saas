@@ -55,7 +55,7 @@ function extractSupportedFilesFromZip(buffer, maxFiles) {
 
   if (wanted.length === 0) {
     throw new ZipError(
-      'The .zip file contains no supported files (.txt, .html, .xml, .docx).'
+      'The .zip file contains no supported files (.txt, .html, .xml, .docx, .pdf).'
     );
   }
   if (wanted.length > maxFiles) {
@@ -304,8 +304,9 @@ async function searchJob(req, res) {
       words.map((word) => [caseSensitive ? word : word.toLowerCase(), 0])
     );
 
-    const files = job.files.map((file) => {
-      const byKey = countInStoredFile(file.filename, file.content, words, {
+    const files = [];
+    for (const file of job.files) {
+      const byKey = await countInStoredFile(file.filename, file.content, words, {
         caseSensitive,
         wholeWord,
       });
@@ -317,8 +318,8 @@ async function searchJob(req, res) {
         return { word, occurrences };
       });
       const occurrences = byWord.reduce((sum, item) => sum + item.occurrences, 0);
-      return { id: file.id, filename: file.filename, occurrences, words: byWord };
-    });
+      files.push({ id: file.id, filename: file.filename, occurrences, words: byWord });
+    }
 
     return res.status(200).json({
       jobId: job.id,

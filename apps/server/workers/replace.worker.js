@@ -48,16 +48,17 @@ async function processReplaceJob(job) {
     throw new Error(`Job ${jobId} no longer exists.`);
   }
 
-  // Route each file by extension (txt/html/xml/docx). Always start from ORIGINAL
+  // Route each file by extension (txt/html/xml/docx/pdf). Always start from ORIGINAL
   // stored content so re-runs do not compound. Matching is still single-pass via
   // replacePlainText — never sequential per-pair replace.
-  const perFile = dbJob.files.map((file) => {
-    const { stored, count } = replaceInStoredFile(file.filename, file.content, pairs, {
+  const perFile = [];
+  for (const file of dbJob.files) {
+    const { stored, count } = await replaceInStoredFile(file.filename, file.content, pairs, {
       caseSensitive,
       wholeWord,
     });
-    return { id: file.id, replacements: count, replacedContent: stored };
-  });
+    perFile.push({ id: file.id, replacements: count, replacedContent: stored });
+  }
   const totalReplacements = perFile.reduce((sum, f) => sum + f.replacements, 0);
 
   // Keep searchWord/replaceWord as a short summary for older clients; wordPairs is

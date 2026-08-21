@@ -9,6 +9,11 @@
 // pass could concatenate adjacent run text, match, then write back.
 // HTML/XML have the analogous case: a word split across elements (ap<b>ple</b>)
 // is also missed.
+//
+// PDF: overlay via pdf-lib (white box + replacement text). Positions from
+// pdfjs-dist getTextContent. Same-line text items are concatenated before the
+// shared regex, so a word split across adjacent items on one line is matched.
+// Rotated text, unresolved fonts, and mixed-font matches are skipped and logged.
 
 const path = require('path');
 const cheerio = require('cheerio');
@@ -20,12 +25,13 @@ const {
   emptyWordCounts,
   addWordCounts,
 } = require('./textReplace');
+const { countPdf, replacePdf } = require('./pdfOverlay');
 
 class FormatParseError extends Error {}
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const W_NS_STRICT = 'http://purl.oclc.org/ooxml/wordprocessingml/main';
 
-const SUPPORTED_EXTS = ['.txt', '.html', '.htm', '.xml', '.docx'];
+const SUPPORTED_EXTS = ['.txt', '.html', '.htm', '.xml', '.docx', '.pdf'];
 const SKIP_HTML_TAGS = new Set(['script', 'style', 'noscript']);
 
 const ELEMENT_NODE = 1;
@@ -42,6 +48,11 @@ function isSupportedExt(ext) {
 
 function isDocxFilename(filename) {
   return getExt(filename) === '.docx';
+}
+
+function isBinaryStoredFilename(filename) {
+  const ext = getExt(filename);
+  return ext === '.docx' || ext === '.pdf';
 }
 
 // Windows editors (and PowerShell Set-Content -Encoding utf8) often prefix UTF-8
@@ -63,31 +74,46 @@ function stripUtf8Bom(text) {
   return text;
 }
 
-// .docx is a zip (binary). Storing it as UTF-8 would corrupt bytes, so we keep
+// .docx and .pdf are binary. Storing them as UTF-8 would corrupt bytes, so we keep
 // base64 in the existing JobFile.content String column — no schema change.
 function encodeStoredContent(filename, buffer) {
-  if (isDocxFilename(filename)) return buffer.toString('base64');
+  if (isBinaryStoredFilename(filename)) return buffer.toString('base64');
   return stripUtf8Bom(buffer.toString('utf8'));
 }
 
 function storedToDownloadBuffer(filename, stored) {
-  if (isDocxFilename(filename)) return Buffer.from(stored, 'base64');
+  if (isBinaryStoredFilename(filename)) return Buffer.from(stored, 'base64');
   return Buffer.from(stored, 'utf8');
 }
 
-function countInStoredFile(filename, stored, words, flags) {
+async function countInStoredFile(filename, stored, words, flags) {
   const ext = getExt(filename);
   if (ext === '.html' || ext === '.htm') return countHtml(stored, words, flags);
   if (ext === '.xml') return countXml(stored, words, flags);
   if (ext === '.docx') return countDocx(stored, words, flags);
+  if (ext === '.pdf') {
+    try {
+      return await countPdf(stored, words, flags);
+    } catch (err) {
+      throw new FormatParseError(err.message || 'The PDF file is invalid or could not be parsed.');
+    }
+  }
   return countPlainText(stripUtf8Bom(stored), words, flags);
 }
 
-function replaceInStoredFile(filename, stored, pairs, flags) {
+async function replaceInStoredFile(filename, stored, pairs, flags) {
   const ext = getExt(filename);
   if (ext === '.html' || ext === '.htm') return replaceHtml(stored, pairs, flags);
   if (ext === '.xml') return replaceXml(stored, pairs, flags);
   if (ext === '.docx') return replaceDocx(stored, pairs, flags);
+  if (ext === '.pdf') {
+    try {
+      return await replacePdf(stored, pairs, flags);
+    } catch (err) {
+      if (err instanceof FormatParseError) throw err;
+      throw new FormatParseError(err.message || 'The PDF file is invalid or could not be parsed.');
+    }
+  }
   const result = replacePlainText(stripUtf8Bom(stored), pairs, flags);
   return { stored: result.text, count: result.count };
 }

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { apiPostForm, ApiError } from '../lib/apiClient'
 import BackNav from '../components/BackNav'
 
-const ACCEPTED_EXTENSIONS = ['.txt', '.html', '.htm', '.xml', '.docx', '.zip']
+const ACCEPTED_EXTENSIONS = ['.txt', '.html', '.htm', '.xml', '.docx', '.pdf', '.zip']
 // After a successful upload we pause briefly on the summary, then move to search.
 const REDIRECT_DELAY_MS = 1300
 
@@ -46,7 +46,7 @@ export default function Upload() {
     if (!candidate) return
     if (!isAcceptedFile(candidate)) {
       setFile(null)
-      setError('Only .txt, .html, .xml, .docx, or .zip files are allowed.')
+      setError('Only .txt, .html, .xml, .docx, .pdf, or .zip files are allowed.')
       return
     }
     setError('')
@@ -122,7 +122,7 @@ export default function Upload() {
           Upload
         </h1>
         <p className="mt-2 text-sm text-paper/60">
-          Upload a single .txt, .html, .xml, or .docx file, or a
+          Upload a single .txt, .html, .xml, .docx, or .pdf file, or a
           {' '}
           <span className="font-medium text-paper">.zip</span> mixing those types.
         </p>
@@ -178,7 +178,7 @@ export default function Upload() {
                 <p className="text-sm text-paper/70">
                   Drag &amp; drop your file here
                 </p>
-                <p className="mt-1 text-xs text-paper/40">.txt, .html, .xml, .docx, or .zip — one file</p>
+                <p className="mt-1 text-xs text-paper/40">.txt, .html, .xml, .docx, .pdf, or .zip — one file</p>
 
                 <button
                   type="button"
@@ -192,7 +192,7 @@ export default function Upload() {
                 <input
                   ref={inputRef}
                   type="file"
-                  accept=".txt,.html,.htm,.xml,.docx,.zip"
+                  accept=".txt,.html,.htm,.xml,.docx,.pdf,.zip"
                   onChange={handleInputChange}
                   className="hidden"
                 />

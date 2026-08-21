@@ -35,7 +35,7 @@ export default function Landing() {
         <section className="mx-auto max-w-5xl px-6 pb-16 pt-16 sm:pt-24">
           <AnimatedDiff />
           <p className="mt-8 max-w-xl text-base text-paper/70">
-            Upload a .txt, .html, .xml, or .docx file — or a zip mixing those —
+            Upload a .txt, .html, .xml, .docx, or .pdf file — or a zip mixing those —
             search a word, confirm the counts, then replace it in the background.
             Download a zip of the results — originals are not overwritten.
           </p>
@@ -57,7 +57,7 @@ export default function Landing() {
               <p className="font-mono text-xs text-paper/40">01</p>
               <h2 className="mt-2 font-display text-lg font-semibold">Upload</h2>
               <p className="mt-2 text-sm text-paper/65">
-                One .txt / .html / .xml / .docx, or a .zip mixing those. Zip-bomb
+                One .txt / .html / .xml / .docx / .pdf, or a .zip mixing those. Zip-bomb
                 size caps apply before anything is unzipped.
               </p>
             </div>

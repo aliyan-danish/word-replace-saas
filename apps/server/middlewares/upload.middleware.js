@@ -17,6 +17,7 @@ const ALLOWED_MIME_BY_EXT = {
     'application/octet-stream',
     'application/zip',
   ],
+  '.pdf': ['application/pdf', 'application/octet-stream'],
   '.zip': [
     'application/zip',
     'application/x-zip-compressed',
@@ -26,7 +27,7 @@ const ALLOWED_MIME_BY_EXT = {
   ],
 };
 
-const ALLOWED_EXT_LABEL = '.txt, .html, .xml, .docx, or .zip';
+const ALLOWED_EXT_LABEL = '.txt, .html, .xml, .docx, .pdf, or .zip';
 
 // Storing in memory (no disk writes) keeps uploads ephemeral; the bytes are persisted
 // to Postgres via Prisma in the controller instead of ever hitting the filesystem.
