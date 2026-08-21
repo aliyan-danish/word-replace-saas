@@ -6,11 +6,7 @@ const { Worker } = require('bullmq');
 const prisma = require('../lib/prisma');
 const { connection, REPLACE_QUEUE_NAME } = require('../lib/queue');
 // Reuse the SAME helpers the controller/search use, so replace matches search exactly.
-const {
-  buildMultiWordRegex,
-  findPairForMatch,
-  applyCasePattern,
-} = require('../lib/textReplace');
+const { replaceInStoredFile } = require('../lib/fileFormats');
 
 // Resolve queue payload to a pairs array. New jobs send `pairs`; older queued jobs
 // still have a single word/replacement.
@@ -52,27 +48,15 @@ async function processReplaceJob(job) {
     throw new Error(`Job ${jobId} no longer exists.`);
   }
 
-  // ONE combined regex over ORIGINAL content. Sequential per-pair replace would
-  // cascade (apple→banana then banana→cherry turns apple into cherry).
-  const regex = buildMultiWordRegex(
-    pairs.map((pair) => pair.word),
-    { caseSensitive, wholeWord }
-  );
-
+  // Route each file by extension (txt/html/xml/docx). Always start from ORIGINAL
+  // stored content so re-runs do not compound. Matching is still single-pass via
+  // replacePlainText — never sequential per-pair replace.
   const perFile = dbJob.files.map((file) => {
-    regex.lastIndex = 0;
-    const replacements = file.content.match(regex)?.length ?? 0;
-    regex.lastIndex = 0;
-    // Function replacer so each match can look up its own pair. $ is literal here,
-    // so we do not $$ -escape. Case-sensitive still inserts the typed replacement;
-    // case-insensitive still uses applyCasePattern unchanged.
-    const replacedContent = file.content.replace(regex, (matched) => {
-      const pair = findPairForMatch(matched, pairs, caseSensitive);
-      if (!pair) return matched;
-      if (caseSensitive) return pair.replacement;
-      return applyCasePattern(matched, pair.replacement);
+    const { stored, count } = replaceInStoredFile(file.filename, file.content, pairs, {
+      caseSensitive,
+      wholeWord,
     });
-    return { id: file.id, replacements, replacedContent };
+    return { id: file.id, replacements: count, replacedContent: stored };
   });
   const totalReplacements = perFile.reduce((sum, f) => sum + f.replacements, 0);
 

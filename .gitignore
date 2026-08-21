@@ -6,3 +6,5 @@ test-upload/
 apps/server/*.zip 
 apps/server/testfile.txt 
 apps/server/case-mix.txt 
+build-docx.js
+build-xml.js

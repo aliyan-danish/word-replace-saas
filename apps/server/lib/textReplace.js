@@ -98,6 +98,56 @@ function applyCasePattern(matchedText, replacementText) {
   return replacementText;
 }
 
+function emptyWordCounts(words, caseSensitive) {
+  return Object.fromEntries(
+    words.map((word) => [caseSensitive ? word : word.toLowerCase(), 0])
+  );
+}
+
+function addWordCounts(target, source, words, caseSensitive) {
+  for (const word of words) {
+    const key = caseSensitive ? word : word.toLowerCase();
+    target[key] = (target[key] ?? 0) + (source[key] ?? 0);
+  }
+  return target;
+}
+
+// Count matches in a plain-text string. HTML/XML/DOCX handlers feed this only the
+// visible text they extracted, so matching never forks per format.
+function countPlainText(text, words, { caseSensitive, wholeWord }) {
+  const regex = buildMultiWordRegex(words, { caseSensitive, wholeWord });
+  const lookupPairs = words.map((word) => ({ word }));
+  const counts = emptyWordCounts(words, caseSensitive);
+  regex.lastIndex = 0;
+  const matches = text.match(regex) ?? [];
+  for (const matched of matches) {
+    const pair = findPairForMatch(matched, lookupPairs, caseSensitive);
+    if (!pair) continue;
+    const key = caseSensitive ? pair.word : pair.word.toLowerCase();
+    counts[key] += 1;
+  }
+  return counts;
+}
+
+// Single-pass replace on a plain-text string. applyCasePattern is used exactly as
+// in the .txt worker path; this is the shared implementation formats call into.
+function replacePlainText(text, pairs, { caseSensitive, wholeWord }) {
+  const regex = buildMultiWordRegex(
+    pairs.map((pair) => pair.word),
+    { caseSensitive, wholeWord }
+  );
+  regex.lastIndex = 0;
+  let count = 0;
+  const replaced = text.replace(regex, (matched) => {
+    const pair = findPairForMatch(matched, pairs, caseSensitive);
+    if (!pair) return matched;
+    count += 1;
+    if (caseSensitive) return pair.replacement;
+    return applyCasePattern(matched, pair.replacement);
+  });
+  return { text: replaced, count };
+}
+
 module.exports = {
   escapeRegex,
   buildSearchRegex,
@@ -105,4 +155,8 @@ module.exports = {
   findPairForMatch,
   escapeReplacementDollarSigns,
   applyCasePattern,
+  emptyWordCounts,
+  addWordCounts,
+  countPlainText,
+  replacePlainText,
 };

@@ -2,12 +2,15 @@ const path = require('path');
 const AdmZip = require('adm-zip');
 const prisma = require('../lib/prisma');
 const { replaceQueue } = require('../lib/queue');
-// Search still runs inline (read-only + cheap); it shares the regex builder with the
-// replace worker via this module so the two can never diverge.
+// Search still runs inline (read-only + cheap); it shares fileFormats with the
+// replace worker so search counts and replace cannot diverge.
 const {
-  buildMultiWordRegex,
-  findPairForMatch,
-} = require('../lib/textReplace');
+  countInStoredFile,
+  encodeStoredContent,
+  isSupportedExt,
+  storedToDownloadBuffer,
+  FormatParseError,
+} = require('../lib/fileFormats');
 
 // Cap how many pairs one job can carry so a huge payload can't explode the regex.
 const MAX_WORD_PAIRS = 20;
@@ -22,9 +25,9 @@ const { getEnforcedSubscription, PRO_PLAN_MISSING } = require('../lib/subscripti
 const MAX_UNCOMPRESSED_BYTES_PER_FILE = 20 * 1024 * 1024;
 const MAX_UNCOMPRESSED_BYTES_TOTAL = 50 * 1024 * 1024;
 
-// Decide whether a zip entry is a real .txt file we should keep, filtering out
-// directories and OS/editor junk (macOS resource forks, .DS_Store, dotfiles).
-function isWantedTxtEntry(entry) {
+// Decide whether a zip entry is a supported job file, filtering out directories
+// and OS/editor junk (macOS resource forks, .DS_Store, dotfiles).
+function isWantedZipEntry(entry) {
   if (entry.isDirectory) return false;
 
   const entryName = entry.entryName; // full path within the archive, forward-slashed
@@ -34,13 +37,13 @@ function isWantedTxtEntry(entry) {
   if (base === '.DS_Store') return false;
   if (base.startsWith('.')) return false; // skip hidden files like ._foo or .gitkeep
 
-  return base.toLowerCase().endsWith('.txt');
+  return isSupportedExt(path.posix.extname(base));
 }
 
-// Turn a .zip buffer into a list of { filename, content, size }. `maxFiles` is the
-// caller's plan-derived cap on how many .txt files are allowed out of one archive.
-// Throws a plain Error with a user-safe message on invalid/empty/oversized archives.
-function extractTxtFilesFromZip(buffer, maxFiles) {
+// Turn a .zip buffer into a list of { filename, content, size }. Mixed formats in
+// one archive are allowed; each entry is routed by extension. `maxFiles` is the
+// caller's plan-derived cap. Throws ZipError on invalid/empty/oversized archives.
+function extractSupportedFilesFromZip(buffer, maxFiles) {
   let zip;
   try {
     zip = new AdmZip(buffer);
@@ -48,21 +51,23 @@ function extractTxtFilesFromZip(buffer, maxFiles) {
     throw new ZipError('The uploaded .zip file is invalid or corrupted.');
   }
 
-  const txtEntries = zip.getEntries().filter(isWantedTxtEntry);
+  const wanted = zip.getEntries().filter(isWantedZipEntry);
 
-  if (txtEntries.length === 0) {
-    throw new ZipError('The .zip file contains no .txt files.');
-  }
-  if (txtEntries.length > maxFiles) {
+  if (wanted.length === 0) {
     throw new ZipError(
-      `The .zip contains ${txtEntries.length} .txt files, which exceeds your plan's limit of ${maxFiles} files per upload.`
+      'The .zip file contains no supported files (.txt, .html, .xml, .docx).'
+    );
+  }
+  if (wanted.length > maxFiles) {
+    throw new ZipError(
+      `The .zip contains ${wanted.length} supported files, which exceeds your plan's limit of ${maxFiles} files per upload.`
     );
   }
 
   // Zip-bomb protection: use declared uncompressed sizes from the central directory
   // (entry.header.size) BEFORE decompressing. Never call getData() first.
   let totalUncompressed = 0;
-  for (const entry of txtEntries) {
+  for (const entry of wanted) {
     const declaredSize = entry.header && entry.header.size;
     if (typeof declaredSize !== 'number' || declaredSize < 0) {
       throw new ZipError(
@@ -82,11 +87,12 @@ function extractTxtFilesFromZip(buffer, maxFiles) {
     }
   }
 
-  return txtEntries.map((entry) => {
-    const raw = entry.getData(); // decompressed bytes for this entry
+  return wanted.map((entry) => {
+    const raw = entry.getData();
+    const filename = path.posix.basename(entry.entryName);
     return {
-      filename: path.posix.basename(entry.entryName),
-      content: raw.toString('utf8'),
+      filename,
+      content: encodeStoredContent(filename, raw),
       size: raw.length,
     };
   });
@@ -151,25 +157,6 @@ function stampPairFlags(pairs, caseSensitive, wholeWord) {
   }));
 }
 
-// Count occurrences per word in ORIGINAL content using the same combined regex
-// the worker will use to replace, so search totals and replace totals cannot diverge.
-function countByWord(content, words, { caseSensitive, wholeWord }) {
-  const regex = buildMultiWordRegex(words, { caseSensitive, wholeWord });
-  const lookupPairs = words.map((word) => ({ word }));
-  const counts = Object.fromEntries(
-    words.map((word) => [caseSensitive ? word : word.toLowerCase(), 0])
-  );
-  regex.lastIndex = 0;
-  const matches = content.match(regex) ?? [];
-  for (const matched of matches) {
-    const pair = findPairForMatch(matched, lookupPairs, caseSensitive);
-    if (!pair) continue;
-    const key = caseSensitive ? pair.word : pair.word.toLowerCase();
-    counts[key] += 1;
-  }
-  return counts;
-}
-
 async function uploadJob(req, res) {
   try {
     if (!req.file) {
@@ -225,12 +212,12 @@ async function uploadJob(req, res) {
     // zip extraction so a huge archive is rejected before creating any rows.
     let files;
     if (isZip) {
-      files = extractTxtFilesFromZip(buffer, plan.maxFilesPerJob);
+      files = extractSupportedFilesFromZip(buffer, plan.maxFilesPerJob);
     } else {
       files = [
         {
           filename: originalname,
-          content: buffer.toString('utf8'),
+          content: encodeStoredContent(originalname, buffer),
           size: buffer.length,
         },
       ];
@@ -318,7 +305,10 @@ async function searchJob(req, res) {
     );
 
     const files = job.files.map((file) => {
-      const byKey = countByWord(file.content, words, { caseSensitive, wholeWord });
+      const byKey = countInStoredFile(file.filename, file.content, words, {
+        caseSensitive,
+        wholeWord,
+      });
       const byWord = words.map((word) => {
         const key = caseSensitive ? word : word.toLowerCase();
         const occurrences = byKey[key] ?? 0;
@@ -343,6 +333,9 @@ async function searchJob(req, res) {
       files,
     });
   } catch (err) {
+    if (err instanceof FormatParseError) {
+      return res.status(400).json({ error: err.message });
+    }
     // Never leak internals to the client.
     console.error('searchJob error:', err);
     return res
@@ -502,7 +495,7 @@ async function downloadJob(req, res) {
         );
         text = file.content;
       }
-      zip.addFile(file.filename, Buffer.from(text, 'utf8'));
+      zip.addFile(file.filename, storedToDownloadBuffer(file.filename, text));
     }
 
     const zipBuffer = zip.toBuffer();

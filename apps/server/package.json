@@ -23,9 +23,11 @@
   "type": "commonjs",
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@xmldom/xmldom": "^0.9.11",
     "adm-zip": "^0.6.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.81.2",
+    "cheerio": "^1.2.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

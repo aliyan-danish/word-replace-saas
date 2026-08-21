@@ -1,15 +1,22 @@
 const path = require('path');
 const multer = require('multer');
 
-// 10MB cap on the raw upload. Applies to the single .txt or the .zip archive itself.
+// 10MB cap on the raw upload. Applies to a single supported file or the .zip itself.
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-// We accept a .txt or a .zip. We validate BOTH the extension and the mimetype so a
-// mislabeled file is rejected. Mimetypes vary by client, so each extension maps to a
-// small allowlist that also tolerates the generic "application/octet-stream" that many
-// clients (including curl in some configs) send for binary/unknown uploads.
+// Validate BOTH extension and mimetype so a mislabeled file is rejected. Mimetypes
+// vary by client, so each extension maps to a small allowlist that also tolerates
+// the generic "application/octet-stream" that many clients (including curl) send.
 const ALLOWED_MIME_BY_EXT = {
   '.txt': ['text/plain', 'application/octet-stream'],
+  '.html': ['text/html', 'application/octet-stream'],
+  '.htm': ['text/html', 'application/octet-stream'],
+  '.xml': ['text/xml', 'application/xml', 'application/octet-stream'],
+  '.docx': [
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/octet-stream',
+    'application/zip',
+  ],
   '.zip': [
     'application/zip',
     'application/x-zip-compressed',
@@ -19,8 +26,10 @@ const ALLOWED_MIME_BY_EXT = {
   ],
 };
 
-// Storing in memory (no disk writes) keeps uploads ephemeral; the text is persisted to
-// Postgres via Prisma in the controller instead of ever hitting the filesystem.
+const ALLOWED_EXT_LABEL = '.txt, .html, .xml, .docx, or .zip';
+
+// Storing in memory (no disk writes) keeps uploads ephemeral; the bytes are persisted
+// to Postgres via Prisma in the controller instead of ever hitting the filesystem.
 const storage = multer.memoryStorage();
 
 function fileFilter(req, file, cb) {
@@ -28,8 +37,7 @@ function fileFilter(req, file, cb) {
   const allowedMimes = ALLOWED_MIME_BY_EXT[ext];
 
   if (!allowedMimes) {
-    // Reject on extension first with a clear, user-facing reason.
-    return cb(new UploadValidationError('Only .txt or .zip files are allowed.'));
+    return cb(new UploadValidationError(`Only ${ALLOWED_EXT_LABEL} files are allowed.`));
   }
   if (!allowedMimes.includes(file.mimetype)) {
     return cb(
@@ -41,8 +49,6 @@ function fileFilter(req, file, cb) {
   return cb(null, true);
 }
 
-// Custom error type so the wrapper below can distinguish our validation failures
-// (bad type) from multer's built-in errors (e.g. size limit) and from unexpected ones.
 class UploadValidationError extends Error {}
 
 const upload = multer({
@@ -51,8 +57,6 @@ const upload = multer({
   fileFilter,
 });
 
-// Wraps `upload.single('file')` so multer's errors become clean 400 JSON responses
-// instead of bubbling up as unhandled errors. Anything unexpected is passed to next().
 function uploadSingleFile(req, res, next) {
   upload.single('file')(req, res, (err) => {
     if (!err) {
@@ -75,7 +79,6 @@ function uploadSingleFile(req, res, next) {
       return res.status(400).json({ error: err.message });
     }
 
-    // Unknown error: don't leak details, hand off to the generic handler.
     return next(err);
   });
 }
