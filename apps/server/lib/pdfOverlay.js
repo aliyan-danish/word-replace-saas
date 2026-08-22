@@ -17,6 +17,16 @@
 //
 // Rotated/skewed items (non-axis-aligned transform) are skipped, not guessed.
 // Longer replacement overlapping neighbors is an accepted limitation (no reflow).
+//
+// Substring position: pdfjs getTextContent() has no item.chars. A single PDF
+// show-text (one drawText / one Tj) is ONE item for the whole line, so we cannot
+// use the item's full x/width for a match inside it. We slice with the resolved
+// StandardFont's widthOfTextAtSize(prefix) and widthOfTextAtSize(match), then
+// scale those widths so they fit the item's extracted width
+// (item.width / measured(item.str)). That is glyph-metric placement, not
+// character-count proportion. Limits: extra per-glyph TJ tweaks / word-spacing
+// that are not uniform across the item can shift the box slightly; if the font
+// cannot measure the item string, the occurrence is skipped, not guessed.
 
 const { PDFDocument, StandardFonts, PDFName, rgb } = require('pdf-lib');
 const { pathToFileURL } = require('url');
@@ -206,27 +216,52 @@ function collectRegexMatches(text, pairs, flags) {
 function itemsCoveringRange(lineItems, start, length) {
   const covered = [];
   let cursor = 0;
+  const end = start + length;
   for (const item of lineItems) {
     const next = cursor + item.str.length;
-    if (next > start && cursor < start + length) covered.push(item);
+    if (next > start && cursor < end) {
+      covered.push({
+        item,
+        startInItem: Math.max(0, start - cursor),
+        endInItem: Math.min(item.str.length, end - cursor),
+      });
+    }
     cursor = next;
   }
   return covered;
 }
 
-function buildOccurrence(pageNumber, lineItems, styles, pageStandardFonts, match) {
+// Map a match slice onto the item box using StandardFont glyph widths, scaled so
+// the full item string's measured width equals pdfjs item.width. Whole-item
+// matches keep the extracted box (no measurement needed).
+function sliceItemGeometry(geo, item, startInItem, endInItem, pdfFont) {
+  const whole = startInItem === 0 && endInItem === item.str.length;
+  if (whole) return geo;
+  let measuredTotal;
+  let prefixW;
+  let sliceW;
+  try {
+    measuredTotal = pdfFont.widthOfTextAtSize(item.str, geo.fontSize);
+    prefixW = pdfFont.widthOfTextAtSize(item.str.slice(0, startInItem), geo.fontSize);
+    sliceW = pdfFont.widthOfTextAtSize(item.str.slice(startInItem, endInItem), geo.fontSize);
+  } catch {
+    return null;
+  }
+  if (!(measuredTotal > 0) || !(sliceW > 0) || !(geo.width > 0)) return null;
+  const scale = geo.width / measuredTotal;
+  return {
+    ...geo,
+    x: geo.x + prefixW * scale,
+    width: sliceW * scale,
+  };
+}
+
+async function buildOccurrence(pageNumber, lineItems, styles, pageStandardFonts, match, measureFont) {
   const covered = itemsCoveringRange(lineItems, match.index, match.length);
   if (covered.length === 0) {
     return { skip: 'no-glyphs', match };
   }
-  const geos = [];
-  for (const item of covered) {
-    const geo = itemGeometry(item);
-    if (!geo) return { skip: 'missing-transform', match };
-    if (geo.rotated) return { skip: 'rotated-text', match };
-    geos.push(geo);
-  }
-  const fontFamilies = covered.map((item) => {
+  const fontFamilies = covered.map(({ item }) => {
     const style = styles[item.fontName] || {};
     return style.fontFamily || '';
   });
@@ -240,6 +275,18 @@ function buildOccurrence(pageNumber, lineItems, styles, pageStandardFonts, match
   }
   if (new Set(standardFonts).size > 1) {
     return { skip: 'mixed-font', match, extra: `font=${JSON.stringify(standardFonts.join('|'))}` };
+  }
+  const pdfFont = await measureFont(standardFonts[0]);
+  const geos = [];
+  for (const slice of covered) {
+    const geo = itemGeometry(slice.item);
+    if (!geo) return { skip: 'missing-transform', match };
+    if (geo.rotated) return { skip: 'rotated-text', match };
+    const sliced = sliceItemGeometry(geo, slice.item, slice.startInItem, slice.endInItem, pdfFont);
+    if (!sliced) {
+      return { skip: 'cannot-measure-substring', match };
+    }
+    geos.push(sliced);
   }
   const sizes = geos.map((geo) => geo.fontSize);
   if (Math.max(...sizes) - Math.min(...sizes) > 0.15) {
@@ -313,7 +360,16 @@ async function extractPages(pdfBytes) {
   return pages;
 }
 
-function collectOccurrences(pages, pairs, flags) {
+async function collectOccurrences(pages, pairs, flags) {
+  const measureDoc = await PDFDocument.create();
+  const fontCache = new Map();
+  async function measureFont(name) {
+    if (!fontCache.has(name)) {
+      fontCache.set(name, await measureDoc.embedFont(name));
+    }
+    return fontCache.get(name);
+  }
+
   const overlayable = [];
   for (const page of pages) {
     const lines = groupItemsIntoLines(page.items);
@@ -321,12 +377,13 @@ function collectOccurrences(pages, pairs, flags) {
       const text = line.items.map((item) => item.str).join('');
       const matches = collectRegexMatches(text, pairs, flags);
       for (const match of matches) {
-        const built = buildOccurrence(
+        const built = await buildOccurrence(
           page.pageNumber,
           line.items,
           page.styles,
           page.pageStandardFonts || [],
-          match
+          match,
+          measureFont
         );
         if (built.skip) {
           logSkip(page.pageNumber, match.matched, built.skip, built.extra);
@@ -343,7 +400,7 @@ async function countPdf(storedBase64, words, flags) {
   const bytes = Buffer.from(storedBase64, 'base64');
   const pages = await extractPages(bytes);
   const pairs = words.map((word) => ({ word, replacement: word }));
-  const occurrences = collectOccurrences(pages, pairs, flags);
+  const occurrences = await collectOccurrences(pages, pairs, flags);
   const counts = emptyWordCounts(words, flags.caseSensitive);
   for (const occurrence of occurrences) {
     const key = flags.caseSensitive
@@ -357,7 +414,7 @@ async function countPdf(storedBase64, words, flags) {
 async function replacePdf(storedBase64, pairs, flags) {
   const bytes = Buffer.from(storedBase64, 'base64');
   const pages = await extractPages(bytes);
-  const occurrences = collectOccurrences(pages, pairs, flags);
+  const occurrences = await collectOccurrences(pages, pairs, flags);
 
   const pdfDoc = await PDFDocument.load(bytes);
   const fontCache = new Map();
