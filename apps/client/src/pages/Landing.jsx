@@ -35,9 +35,10 @@ export default function Landing() {
         <section className="mx-auto max-w-5xl px-6 pb-16 pt-16 sm:pt-24">
           <AnimatedDiff />
           <p className="mt-8 max-w-xl text-base text-paper/70">
-            Upload a .txt, .html, .xml, .docx, or .pdf file — or a zip mixing those —
-            search a word, confirm the counts, then replace it in the background.
-            Download a zip of the results — originals are not overwritten.
+            Upload a .txt, .html, .xml, .docx, or .pdf — or a zip mixing those —
+            then search one or more words, or a regex pattern. Confirm the counts,
+            replace them in one pass in the background, and download a zip.
+            Originals are not overwritten.
           </p>
           {!isAuthenticated && (
             <div className="mt-8 flex flex-wrap gap-3">
@@ -65,16 +66,18 @@ export default function Landing() {
               <p className="font-mono text-xs text-paper/40">02</p>
               <h2 className="mt-2 font-display text-lg font-semibold">Search</h2>
               <p className="mt-2 text-sm text-paper/65">
-                See per-file and total occurrence counts. Case-sensitive and
-                whole-word toggles. Nothing is rewritten yet.
+                One word or several at once. Per-file and total counts.
+                Case-sensitive and whole-word toggles, plus optional regex
+                for advanced matching. Nothing is rewritten yet.
               </p>
             </div>
             <div>
               <p className="font-mono text-xs text-paper/40">03</p>
               <h2 className="mt-2 font-display text-lg font-semibold">Replace</h2>
               <p className="mt-2 text-sm text-paper/65">
-                Confirm, then a background job does the replace. Poll until
-                complete and download the zip.
+                Confirm, then a background job applies every pair in a single
+                pass on the original files. Poll until complete and download
+                the zip.
               </p>
             </div>
           </div>
@@ -85,8 +88,7 @@ export default function Landing() {
             <h2 className="font-display text-lg font-semibold">Plans</h2>
             <p className="mt-2 max-w-xl text-sm text-paper/65">
               Every new account gets 7 days of Pro limits, no card. After that,
-              expired trials are blocked until upgraded. Limits can be changed in
-              the admin panel without a code deploy.
+              expired trials are blocked until upgraded.
             </p>
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
               <div className="card p-6">

@@ -177,7 +177,7 @@ export default function Dashboard() {
           Welcome back
         </h1>
         <p className="mt-2 text-sm text-paper/60">
-          Upload files, search a word, confirm replace, download results.
+          Upload files, search words or a pattern, confirm replace, download results.
         </p>
 
         <div className="mt-8 flex flex-wrap gap-3">

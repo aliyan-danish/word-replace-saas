@@ -208,7 +208,7 @@ export default function AdminPlans() {
           Manage Plans
         </h1>
         <p className="mt-2 text-sm text-paper/60">
-          Edit FREE and PRO limits. Upload size is edited in MB and saved as bytes.
+          Edit Free and Pro job, file, and upload-size limits.
         </p>
 
         {loading && (

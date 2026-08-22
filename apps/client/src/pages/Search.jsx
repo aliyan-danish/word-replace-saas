@@ -97,7 +97,11 @@ export default function Search() {
           Search
         </h1>
         <p className="mt-2 text-sm text-paper/60">
-          Job ID: <span className="font-mono text-paper/70">{jobId}</span>
+          Find one or more words — or a regex pattern — then confirm before
+          anything is rewritten.
+        </p>
+        <p className="mt-1 font-mono text-xs text-paper/40">
+          Job {jobId}
         </p>
 
         <div className="mt-8 card p-8">
@@ -202,11 +206,11 @@ export default function Search() {
                 </label>
               )}
             </div>
-            {isRegex && (
-              <p className="text-xs text-paper/50">
-                Whole-word matching is off in regex mode — add \b in the pattern if you need boundaries.
-              </p>
-            )}
+            <p className="text-xs text-paper/50">
+              {isRegex
+                ? 'Use a pattern instead of an exact word — for advanced matching. Whole-word is off; add \\b if you need boundaries.'
+                : 'Use a pattern instead of an exact word — for advanced matching.'}
+            </p>
 
             <button
               type="submit"
