@@ -7,6 +7,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth.routes');
 const jobsRoutes = require('./routes/jobs.routes');
 const adminRoutes = require('./routes/admin.routes');
+const plansRoutes = require('./routes/plans.routes');
 
 const app = express();
 
@@ -64,6 +65,9 @@ app.use('/auth', authRoutes);
 
 // Job routes (file upload, and later scan/replace/download) grouped under /api/jobs.
 app.use('/api/jobs', apiLimiter, jobsRoutes);
+
+// Public plan catalog (landing page). No auth — only names + current limits.
+app.use('/api/plans', apiLimiter, plansRoutes);
 
 // Admin-only routes (user list, plan/subscription/role management). Each handler
 // is also gated by authMiddleware + requireAdmin inside the router.

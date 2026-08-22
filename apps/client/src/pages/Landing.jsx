@@ -1,9 +1,57 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { apiGet } from '../lib/apiClient'
 import AnimatedDiff from '../components/AnimatedDiff'
+
+function planTitle(name) {
+  if (name === 'FREE') return 'Free'
+  if (name === 'PRO') return 'Pro'
+  return name
+}
+
+function planLines(plan) {
+  const jobs =
+    plan.monthlyJobLimit == null
+      ? 'Unlimited jobs'
+      : `${plan.monthlyJobLimit} jobs / month`
+  const files = `${plan.maxFilesPerJob} files per upload`
+  const mb = (plan.maxUploadBytes / (1024 * 1024)).toFixed(
+    plan.maxUploadBytes % (1024 * 1024) === 0 ? 0 : 2
+  )
+  return [jobs, files, `${mb} MB max upload`]
+}
 
 export default function Landing() {
   const { isAuthenticated } = useAuth()
+  const [plans, setPlans] = useState([])
+  const [plansLoading, setPlansLoading] = useState(true)
+  const [plansError, setPlansError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadPlans() {
+      setPlansLoading(true)
+      setPlansError('')
+      try {
+        const data = await apiGet('/api/plans')
+        if (cancelled) return
+        const rows = Array.isArray(data.plans) ? data.plans : []
+        const ordered = ['FREE', 'PRO']
+          .map((name) => rows.find((plan) => plan.name === name))
+          .filter(Boolean)
+        setPlans(ordered.length > 0 ? ordered : rows)
+      } catch {
+        if (!cancelled) setPlansError('Could not load current plan limits.')
+      } finally {
+        if (!cancelled) setPlansLoading(false)
+      }
+    }
+    loadPlans()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-ink text-paper">
@@ -90,24 +138,30 @@ export default function Landing() {
               Every new account gets 7 days of Pro limits, no card. After that,
               expired trials are blocked until upgraded.
             </p>
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              <div className="card p-6">
-                <h3 className="font-display text-base font-semibold">Free</h3>
-                <ul className="mt-4 space-y-2 font-mono text-sm text-paper/80">
-                  <li>5 jobs / month</li>
-                  <li>3 files per upload</li>
-                  <li>2 MB max upload</li>
-                </ul>
+            {plansLoading && (
+              <p className="mt-8 text-sm text-paper/50">Loading plans…</p>
+            )}
+            {!plansLoading && plansError && (
+              <div className="mt-8 rounded-lg bg-remove/10 px-4 py-3 text-sm text-remove ring-1 ring-remove/30">
+                {plansError}
               </div>
-              <div className="card p-6">
-                <h3 className="font-display text-base font-semibold">Pro</h3>
-                <ul className="mt-4 space-y-2 font-mono text-sm text-paper/80">
-                  <li>Unlimited jobs</li>
-                  <li>100 files per upload</li>
-                  <li>10 MB max upload</li>
-                </ul>
+            )}
+            {!plansLoading && !plansError && (
+              <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                {plans.map((plan) => (
+                  <div key={plan.name} className="card p-6">
+                    <h3 className="font-display text-base font-semibold">
+                      {planTitle(plan.name)}
+                    </h3>
+                    <ul className="mt-4 space-y-2 font-mono text-sm text-paper/80">
+                      {planLines(plan).map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
           </div>
         </section>
       </main>
