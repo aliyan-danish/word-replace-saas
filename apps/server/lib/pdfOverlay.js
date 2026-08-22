@@ -6,10 +6,12 @@
 // Family is resolved in this order, never guessed:
 //   1. styles[item.fontName].fontFamily mapped to a pdf-lib StandardFont
 //      (Helvetica / Times / Courier + bold/italic), including subset prefixes.
-//   2. If pdfjs only reports a CSS generic (sans-serif/serif/monospace), look at
-//      that page's /BaseFont resources via pdf-lib. If exactly one StandardFont
-//      matches that generic, use it. If more than one (e.g. Helvetica + Bold),
-//      SKIP the occurrence — we will not pick a face.
+//   2. Else item.fontName (g_d0_f1 vs g_d0_f2) via pdfjs commonObjs Font.name
+//      after getOperatorList() — that is the PDF BaseFont for THAT item, so
+//      Helvetica body is not skipped just because the page also has Helvetica-Bold.
+//   3. If commonObjs has no entry, fall back to a unique page-level StandardFont
+//      of that CSS generic. Multiple variants on the page without a per-item
+//      name still skip rather than guess.
 // No Arial→Helvetica. Skips are console.warn'd, never silently drawn.
 //
 // Multi-occurrence: EVERY regex match on EVERY page is considered, not the first
@@ -140,6 +142,48 @@ function resolveDrawFont(cssFamily, pageStandardFonts) {
   const unique = [...new Set(pool)];
   if (unique.length === 1) return unique[0];
   return null;
+}
+
+// pdfjs item.fontName (g_d0_f1 vs g_d0_f2) is unique per loaded font. After
+// getOperatorList(), commonObjs holds the Font with .name = PDF BaseFont
+// (Helvetica vs Helvetica-Bold). styles[].fontFamily is only a CSS generic.
+function lookupPdfjsFont(page, fontName) {
+  if (!page || !page.commonObjs || !fontName) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), 4000);
+    try {
+      page.commonObjs.get(fontName, (font) => {
+        clearTimeout(timer);
+        resolve(font || null);
+      });
+    } catch {
+      clearTimeout(timer);
+      resolve(null);
+    }
+  });
+}
+
+async function buildItemFontMap(page, items) {
+  const fontMap = Object.create(null);
+  const names = [...new Set((items || []).map((item) => item.fontName).filter(Boolean))];
+  if (names.length === 0) return fontMap;
+  // getTextContent() does not populate commonObjs; getOperatorList() does.
+  await page.getOperatorList();
+  for (const name of names) {
+    const font = await lookupPdfjsFont(page, name);
+    fontMap[name] = mapToStandardFont(font && font.name) || null;
+  }
+  return fontMap;
+}
+
+function resolveItemFont(item, styles, fontMap, pageStandardFonts) {
+  const style = (styles && item.fontName && styles[item.fontName]) || {};
+  const direct = mapToStandardFont(style.fontFamily || '');
+  if (direct) return direct;
+  if (fontMap && Object.prototype.hasOwnProperty.call(fontMap, item.fontName)) {
+    return fontMap[item.fontName];
+  }
+  return resolveDrawFont(style.fontFamily || '', pageStandardFonts);
 }
 
 function logSkip(pageNumber, word, reason, extra) {
@@ -319,27 +363,27 @@ function sliceItemGeometry(geo, item, startInItem, endInItem, pdfFont) {
   };
 }
 
-async function buildOccurrence(pageNumber, lineItems, styles, pageStandardFonts, match, measureFont) {
+async function buildOccurrence(pageNumber, lineItems, styles, pageStandardFonts, fontMap, match, measureFont) {
   const covered = itemsCoveringRange(lineItems, match.index, match.length);
   if (covered.length === 0) {
     return { skip: 'no-glyphs', match };
   }
-  const fontFamilies = covered.map(({ item }) => {
-    const style = styles[item.fontName] || {};
-    return style.fontFamily || '';
-  });
-  const standardFonts = fontFamilies.map((family) => resolveDrawFont(family, pageStandardFonts));
-  if (standardFonts.some((font) => !font)) {
+  const resolved = covered.map(({ item }) => resolveItemFont(item, styles, fontMap, pageStandardFonts));
+  if (resolved.some((font) => !font)) {
     return {
       skip: 'font-not-resolved',
       match,
-      extra: `cssFont=${JSON.stringify(fontFamilies.join('|'))} pageFonts=${JSON.stringify(pageStandardFonts)}`,
+      extra: `cssFont=${JSON.stringify(
+        covered.map(({ item }) => (styles[item.fontName] || {}).fontFamily || '')
+      )} itemFonts=${JSON.stringify(covered.map(({ item }) => item.fontName))} pageFonts=${JSON.stringify(
+        pageStandardFonts
+      )} mapped=${JSON.stringify(resolved)}`,
     };
   }
-  if (new Set(standardFonts).size > 1) {
-    return { skip: 'mixed-font', match, extra: `font=${JSON.stringify(standardFonts.join('|'))}` };
+  if (new Set(resolved).size > 1) {
+    return { skip: 'mixed-font', match, extra: `font=${JSON.stringify(resolved.join('|'))}` };
   }
-  const pdfFont = await measureFont(standardFonts[0]);
+  const pdfFont = await measureFont(resolved[0]);
   const geos = [];
   for (const slice of covered) {
     const geo = itemGeometry(slice.item);
@@ -374,7 +418,7 @@ async function buildOccurrence(pageNumber, lineItems, styles, pageStandardFonts,
       fontSize: sizes[0],
       drawSize,
       matchWidth,
-      standardFont: standardFonts[0],
+      standardFont: resolved[0],
       matched: match.matched,
       drawn: match.drawn,
       pair: match.pair,
@@ -414,11 +458,14 @@ async function extractPages(pdfBytes) {
       const page = await doc.getPage(pageNumber);
       const content = await page.getTextContent({ includeMarkedContent: false });
       const pdfLibPage = pdfLibPages[pageNumber - 1];
+      const items = content.items || [];
+      const fontMap = await buildItemFontMap(page, items);
       pages.push({
         pageNumber,
-        items: content.items || [],
+        items,
         styles: content.styles || {},
         pageStandardFonts: pdfLibPage ? listPageStandardFonts(pdfLibPage) : [],
+        fontMap,
       });
     }
   } finally {
@@ -450,6 +497,7 @@ async function collectOccurrences(pages, pairs, flags) {
           line.items,
           page.styles,
           page.pageStandardFonts || [],
+          page.fontMap || Object.create(null),
           match,
           measureFont
         );
