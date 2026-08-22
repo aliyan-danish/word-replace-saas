@@ -12,6 +12,7 @@ export default function Search() {
   const [pairs, setPairs] = useState([emptyPair()])
   const [caseSensitive, setCaseSensitive] = useState(false)
   const [wholeWord, setWholeWord] = useState(false)
+  const [isRegex, setIsRegex] = useState(false)
 
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState('')
@@ -49,12 +50,14 @@ export default function Search() {
 
     setSearching(true)
     setError('')
+    setResult(null)
 
     try {
       const data = await apiPost(`/api/jobs/${jobId}/search`, {
         words: filledPairs.map((pair) => pair.word),
         caseSensitive,
-        wholeWord,
+        wholeWord: isRegex ? false : wholeWord,
+        isRegex,
       })
       setResult(data)
     } catch (err) {
@@ -74,8 +77,15 @@ export default function Search() {
         pairs: filledPairs,
         caseSensitive: result.caseSensitive,
         wholeWord: result.wholeWord,
+        isRegex: Boolean(result.isRegex),
       },
     })
+  }
+
+  const handleToggleRegex = (checked) => {
+    setIsRegex(checked)
+    setResult(null)
+    setError('')
   }
 
   return (
@@ -130,7 +140,7 @@ export default function Search() {
                       value={pair.word}
                       onChange={(e) => updatePair(index, 'word', e.target.value)}
                       className="field"
-                      placeholder="e.g. apple"
+                      placeholder={isRegex ? 'e.g. file_\\d+' : 'e.g. apple'}
                     />
                   </div>
                   <div>
@@ -165,22 +175,38 @@ export default function Search() {
               <label className="flex items-center gap-2 text-sm text-paper/80">
                 <input
                   type="checkbox"
+                  checked={isRegex}
+                  onChange={(e) => handleToggleRegex(e.target.checked)}
+                  className="h-4 w-4 rounded border-ink-border bg-ink text-insert focus:ring-insert"
+                />
+                Use regex pattern
+              </label>
+              <label className="flex items-center gap-2 text-sm text-paper/80">
+                <input
+                  type="checkbox"
                   checked={caseSensitive}
                   onChange={(e) => setCaseSensitive(e.target.checked)}
                   className="h-4 w-4 rounded border-ink-border bg-ink text-insert focus:ring-insert"
                 />
                 Case sensitive
               </label>
-              <label className="flex items-center gap-2 text-sm text-paper/80">
-                <input
-                  type="checkbox"
-                  checked={wholeWord}
-                  onChange={(e) => setWholeWord(e.target.checked)}
-                  className="h-4 w-4 rounded border-ink-border bg-ink text-insert focus:ring-insert"
-                />
-                Whole word only
-              </label>
+              {!isRegex && (
+                <label className="flex items-center gap-2 text-sm text-paper/80">
+                  <input
+                    type="checkbox"
+                    checked={wholeWord}
+                    onChange={(e) => setWholeWord(e.target.checked)}
+                    className="h-4 w-4 rounded border-ink-border bg-ink text-insert focus:ring-insert"
+                  />
+                  Whole word only
+                </label>
+              )}
             </div>
+            {isRegex && (
+              <p className="text-xs text-paper/50">
+                Whole-word matching is off in regex mode — add \b in the pattern if you need boundaries.
+              </p>
+            )}
 
             <button
               type="submit"

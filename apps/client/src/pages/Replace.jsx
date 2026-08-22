@@ -146,7 +146,8 @@ export default function Replace() {
       await apiPost(`/api/jobs/${jobId}/replace`, {
         pairs,
         caseSensitive: Boolean(params.caseSensitive),
-        wholeWord: Boolean(params.wholeWord),
+        wholeWord: Boolean(params.isRegex) ? false : Boolean(params.wholeWord),
+        isRegex: Boolean(params.isRegex),
       })
       if (!activeRef.current) return
       setPhase('replacing')
