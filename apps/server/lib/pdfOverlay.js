@@ -32,6 +32,10 @@
 // the font-size (em), NOT ascent+descent. The overlay box uses the StandardFont
 // AFM FontBBox/Ascender/Descender so descenders (p) and tall ascenders (l) are
 // covered. Replacement text is still drawn at the original baseline.
+//
+// Wider replacements: drawSize is widthOfTextAtSize-scaled to the original
+// match width, floored at 70% of original size. Below that floor we keep full
+// size (overlap accepted). Text stays on the original baseline.
 
 const { PDFDocument, StandardFonts, PDFName, rgb } = require('pdf-lib');
 const { pathToFileURL } = require('url');
@@ -197,6 +201,28 @@ function overlayCoverBox(baselineY, matchX, matchWidth, fontSize, pdfFont) {
   };
 }
 
+// Shrink-to-fit: same widthOfTextAtSize glyph metrics as substring placement.
+// Scale is direct: originalWidth / replacementWidth * fontSize. Floor is 70% of
+// original size; below that we keep full size (accept overlap) rather than
+// shrinking further. Same-or-narrower replacements keep original size.
+function replacementDrawSize(pdfFont, text, matchWidth, fontSize) {
+  if (!text || !(matchWidth > 0) || !(fontSize > 0)) return fontSize;
+  let needed;
+  try {
+    needed = pdfFont.widthOfTextAtSize(text, fontSize);
+  } catch {
+    return fontSize;
+  }
+  if (!(needed > matchWidth)) return fontSize;
+  const scaled = fontSize * (matchWidth / needed);
+  // Same-length pairs like grape/apple differ by a few percent of width in
+  // Helvetica; shrinking those would regress the passing overlay. Only shrink
+  // when the replacement is materially wider (more than 5%).
+  if (needed <= matchWidth * 1.05) return fontSize;
+  if (scaled < fontSize * 0.7) return fontSize;
+  return scaled;
+}
+
 function groupItemsIntoLines(items) {
   const usable = items.filter((item) => item && typeof item.str === 'string' && item.str.length > 0);
   usable.sort((left, right) => {
@@ -333,6 +359,7 @@ async function buildOccurrence(pageNumber, lineItems, styles, pageStandardFonts,
   const baselineY = Math.min(...geos.map((geo) => geo.y));
   const matchWidth = Math.max(...geos.map((geo) => geo.x + geo.width)) - matchX;
   const cover = overlayCoverBox(baselineY, matchX, matchWidth, sizes[0], pdfFont);
+  const drawSize = replacementDrawSize(pdfFont, match.drawn, matchWidth, sizes[0]);
   return {
     skip: null,
     occurrence: {
@@ -345,6 +372,8 @@ async function buildOccurrence(pageNumber, lineItems, styles, pageStandardFonts,
       textX: cover.textX,
       textY: cover.textY,
       fontSize: sizes[0],
+      drawSize,
+      matchWidth,
       standardFont: standardFonts[0],
       matched: match.matched,
       drawn: match.drawn,
@@ -488,7 +517,7 @@ async function replacePdf(storedBase64, pairs, flags) {
       page.drawText(occurrence.drawn, {
         x: occurrence.textX,
         y: occurrence.textY,
-        size: occurrence.fontSize,
+        size: occurrence.drawSize || occurrence.fontSize,
         font,
         color: rgb(0, 0, 0),
       });
