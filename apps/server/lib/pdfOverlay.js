@@ -27,6 +27,11 @@
 // character-count proportion. Limits: extra per-glyph TJ tweaks / word-spacing
 // that are not uniform across the item can shift the box slightly; if the font
 // cannot measure the item string, the occurrence is skipped, not guessed.
+//
+// White-box vertical bounds: pdfjs item origin is the baseline; item.height is
+// the font-size (em), NOT ascent+descent. The overlay box uses the StandardFont
+// AFM FontBBox/Ascender/Descender so descenders (p) and tall ascenders (l) are
+// covered. Replacement text is still drawn at the original baseline.
 
 const { PDFDocument, StandardFonts, PDFName, rgb } = require('pdf-lib');
 const { pathToFileURL } = require('url');
@@ -149,14 +154,46 @@ function itemGeometry(item) {
   if (!Number.isFinite(fontSize) || fontSize <= 0) return null;
   const width = Number(item.width);
   if (!Number.isFinite(width) || width <= 0) return null;
-  const height = Number(item.height) > 0 ? Number(item.height) : fontSize;
   return {
     rotated: false,
     fontSize,
     x: e,
-    y: f,
+    y: f, // pdfjs origin is the baseline, not the glyph bbox top
     width,
-    height,
+  };
+}
+
+// Cover the original glyphs, not the pdfjs item box. item.height is hypot(c,d)
+// = font-size (the em), and the origin is the baseline, so a box of
+// [baseline, baseline+em] misses descenders (p/g/y) entirely and can leave
+// hinted ascender stems (l) visible at the top edge. Use the StandardFont AFM
+// FontBBox/Ascender/Descender, plus a small pad for raster AA.
+function overlayCoverBox(baselineY, matchX, matchWidth, fontSize, pdfFont) {
+  const afm = pdfFont.embedder && pdfFont.embedder.font;
+  let unitsUp = 1000;
+  let unitsDown = 250;
+  if (afm) {
+    const bbox = Array.isArray(afm.FontBBox) ? afm.FontBBox : [];
+    const asc = afm.Ascender != null ? afm.Ascender : bbox[3];
+    const desc = afm.Descender != null ? afm.Descender : bbox[1];
+    unitsUp = Math.max(Number(asc) || 0, Number(bbox[3]) || 0, 1000);
+    unitsDown = Math.max(0, -(Number(desc) || 0), -(Number(bbox[1]) || 0));
+  } else {
+    const ascent = pdfFont.heightAtSize(fontSize, { descender: false });
+    const total = pdfFont.heightAtSize(fontSize, { descender: true });
+    unitsUp = (ascent / fontSize) * 1000;
+    unitsDown = Math.max(0, ((total - ascent) / fontSize) * 1000);
+  }
+  const pad = fontSize * 0.12;
+  const above = (unitsUp / 1000) * fontSize + pad;
+  const below = (unitsDown / 1000) * fontSize + pad;
+  return {
+    boxX: matchX - pad,
+    boxY: baselineY - below,
+    boxWidth: matchWidth + pad * 2,
+    boxHeight: above + below,
+    textX: matchX,
+    textY: baselineY,
   };
 }
 
@@ -292,19 +329,21 @@ async function buildOccurrence(pageNumber, lineItems, styles, pageStandardFonts,
   if (Math.max(...sizes) - Math.min(...sizes) > 0.15) {
     return { skip: 'mixed-size', match };
   }
-  const x = Math.min(...geos.map((geo) => geo.x));
-  const y = Math.min(...geos.map((geo) => geo.y));
-  const right = Math.max(...geos.map((geo) => geo.x + geo.width));
-  const top = Math.max(...geos.map((geo) => geo.y + geo.height));
+  const matchX = Math.min(...geos.map((geo) => geo.x));
+  const baselineY = Math.min(...geos.map((geo) => geo.y));
+  const matchWidth = Math.max(...geos.map((geo) => geo.x + geo.width)) - matchX;
+  const cover = overlayCoverBox(baselineY, matchX, matchWidth, sizes[0], pdfFont);
   return {
     skip: null,
     occurrence: {
       pageNumber,
       pageIndex: pageNumber - 1,
-      x,
-      y,
-      width: right - x,
-      height: top - y,
+      x: cover.boxX,
+      y: cover.boxY,
+      width: cover.boxWidth,
+      height: cover.boxHeight,
+      textX: cover.textX,
+      textY: cover.textY,
       fontSize: sizes[0],
       standardFont: standardFonts[0],
       matched: match.matched,
@@ -438,13 +477,17 @@ async function replacePdf(storedBase64, pairs, flags) {
       width: occurrence.width,
       height: occurrence.height,
       color: rgb(1, 1, 1),
-      borderWidth: 0,
+      // White stroke (not a dark outline): pdf-lib still emits setLineWidth(0)
+      // which some viewers treat as a 1-device-pixel hairline. A white border
+      // also covers antialiased glyph edges the fill might miss.
+      borderWidth: 0.75,
+      borderColor: rgb(1, 1, 1),
     });
     if (occurrence.drawn.length > 0) {
       const font = await embedStandard(occurrence.standardFont);
       page.drawText(occurrence.drawn, {
-        x: occurrence.x,
-        y: occurrence.y,
+        x: occurrence.textX,
+        y: occurrence.textY,
         size: occurrence.fontSize,
         font,
         color: rgb(0, 0, 0),
