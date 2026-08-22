@@ -1,3 +1,5 @@
+const { compileCombinedUserRegex, compileUserRegex } = require('./regexSafety');
+
 // Shared word-search / replacement helpers.
 //
 // These live here (rather than inside jobs.controller.js) so the BullMQ worker can
@@ -33,7 +35,13 @@ function buildSearchRegex(word, { caseSensitive, wholeWord }) {
 // solvable. Longest-first helps at the same start index, but pairs like "ca"+"at" in
 // "cat" still leave one match unused. Whole-word matching avoids the cat/category
 // class of mistakes; we are not trying to solve every overlap here.
-function buildMultiWordRegex(words, { caseSensitive, wholeWord }) {
+function buildMultiWordRegex(words, { caseSensitive, wholeWord, isRegex }) {
+  // Regex mode: user patterns as-is (no escapeRegex, no auto \b). Combined
+  // longest-first so multi-pattern search is still one pass, same as literals.
+  // wholeWord is ignored — callers write \b themselves.
+  if (isRegex) {
+    return compileCombinedUserRegex(words, { caseSensitive });
+  }
   const unique = [];
   const seen = new Set();
   for (const word of words) {
@@ -51,12 +59,30 @@ function buildMultiWordRegex(words, { caseSensitive, wholeWord }) {
   return new RegExp(`(?:${alts.join('|')})`, flags);
 }
 
-function findPairForMatch(matched, pairs, caseSensitive) {
-  return pairs.find((pair) =>
-    caseSensitive
-      ? pair.word === matched
-      : pair.word.toLowerCase() === matched.toLowerCase()
-  );
+function findPairForMatch(matched, pairs, caseSensitive, isRegex) {
+  if (!isRegex) {
+    return pairs.find((pair) =>
+      caseSensitive
+        ? pair.word === matched
+        : pair.word.toLowerCase() === matched.toLowerCase()
+    );
+  }
+  // Which user pattern produced this match: every pattern that fully matches
+  // the captured text, then longest source wins (same longest-first rule as
+  // the combined regex, not sequential per-pair application).
+  const hits = [];
+  for (const pair of pairs) {
+    try {
+      const re = compileUserRegex(pair.word, { caseSensitive });
+      re.lastIndex = 0;
+      const found = re.exec(matched);
+      if (found && found.index === 0 && found[0] === matched) hits.push(pair);
+    } catch {
+      continue;
+    }
+  }
+  hits.sort((a, b) => b.word.length - a.word.length);
+  return hits[0] || null;
 }
 
 // String.replace() treats $ specially in the replacement argument ($&, $1, $$, etc.).
@@ -98,15 +124,19 @@ function applyCasePattern(matchedText, replacementText) {
   return replacementText;
 }
 
-function emptyWordCounts(words, caseSensitive) {
+function countKey(word, caseSensitive, isRegex) {
+  return caseSensitive || isRegex ? word : word.toLowerCase();
+}
+
+function emptyWordCounts(words, caseSensitive, isRegex) {
   return Object.fromEntries(
-    words.map((word) => [caseSensitive ? word : word.toLowerCase(), 0])
+    words.map((word) => [countKey(word, caseSensitive, isRegex), 0])
   );
 }
 
-function addWordCounts(target, source, words, caseSensitive) {
+function addWordCounts(target, source, words, caseSensitive, isRegex) {
   for (const word of words) {
-    const key = caseSensitive ? word : word.toLowerCase();
+    const key = countKey(word, caseSensitive, isRegex);
     target[key] = (target[key] ?? 0) + (source[key] ?? 0);
   }
   return target;
@@ -114,16 +144,17 @@ function addWordCounts(target, source, words, caseSensitive) {
 
 // Count matches in a plain-text string. HTML/XML/DOCX handlers feed this only the
 // visible text they extracted, so matching never forks per format.
-function countPlainText(text, words, { caseSensitive, wholeWord }) {
-  const regex = buildMultiWordRegex(words, { caseSensitive, wholeWord });
+function countPlainText(text, words, { caseSensitive, wholeWord, isRegex }) {
+  const regex = buildMultiWordRegex(words, { caseSensitive, wholeWord, isRegex });
   const lookupPairs = words.map((word) => ({ word }));
-  const counts = emptyWordCounts(words, caseSensitive);
+  const counts = emptyWordCounts(words, caseSensitive, isRegex);
   regex.lastIndex = 0;
   const matches = text.match(regex) ?? [];
   for (const matched of matches) {
-    const pair = findPairForMatch(matched, lookupPairs, caseSensitive);
+    if (!matched) continue;
+    const pair = findPairForMatch(matched, lookupPairs, caseSensitive, isRegex);
     if (!pair) continue;
-    const key = caseSensitive ? pair.word : pair.word.toLowerCase();
+    const key = countKey(pair.word, caseSensitive, isRegex);
     counts[key] += 1;
   }
   return counts;
@@ -131,15 +162,17 @@ function countPlainText(text, words, { caseSensitive, wholeWord }) {
 
 // Single-pass replace on a plain-text string. applyCasePattern is used exactly as
 // in the .txt worker path; this is the shared implementation formats call into.
-function replacePlainText(text, pairs, { caseSensitive, wholeWord }) {
+// Replacement text is always literal (the callback return is not scanned for $1).
+function replacePlainText(text, pairs, { caseSensitive, wholeWord, isRegex }) {
   const regex = buildMultiWordRegex(
     pairs.map((pair) => pair.word),
-    { caseSensitive, wholeWord }
+    { caseSensitive, wholeWord, isRegex }
   );
   regex.lastIndex = 0;
   let count = 0;
   const replaced = text.replace(regex, (matched) => {
-    const pair = findPairForMatch(matched, pairs, caseSensitive);
+    if (!matched) return matched;
+    const pair = findPairForMatch(matched, pairs, caseSensitive, isRegex);
     if (!pair) return matched;
     count += 1;
     if (caseSensitive) return pair.replacement;
@@ -155,6 +188,7 @@ module.exports = {
   findPairForMatch,
   escapeReplacementDollarSigns,
   applyCasePattern,
+  countKey,
   emptyWordCounts,
   addWordCounts,
   countPlainText,

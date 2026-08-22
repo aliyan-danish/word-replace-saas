@@ -139,9 +139,15 @@ function walkHtmlTextNodes(nodes, visit) {
 
 function countHtml(html, words, flags) {
   const $ = loadHtml(html);
-  const counts = emptyWordCounts(words, flags.caseSensitive);
+  const counts = emptyWordCounts(words, flags.caseSensitive, flags.isRegex);
   walkHtmlTextNodes($.root().contents().toArray(), (node) => {
-    addWordCounts(counts, countPlainText(node.data || '', words, flags), words, flags.caseSensitive);
+    addWordCounts(
+      counts,
+      countPlainText(node.data || '', words, flags),
+      words,
+      flags.caseSensitive,
+      flags.isRegex
+    );
   });
   return counts;
 }
@@ -218,9 +224,15 @@ function walkXmlTextNodes(node, visit, { onlyWt } = {}) {
 
 function countXml(xml, words, flags) {
   const doc = parseXmlDocument(xml);
-  const counts = emptyWordCounts(words, flags.caseSensitive);
+  const counts = emptyWordCounts(words, flags.caseSensitive, flags.isRegex);
   walkXmlTextNodes(doc.documentElement, (node) => {
-    addWordCounts(counts, countPlainText(node.data || '', words, flags), words, flags.caseSensitive);
+    addWordCounts(
+      counts,
+      countPlainText(node.data || '', words, flags),
+      words,
+      flags.caseSensitive,
+      flags.isRegex
+    );
   });
   return counts;
 }
@@ -270,7 +282,7 @@ function openDocxZip(storedBase64) {
 
 function countDocx(storedBase64, words, flags) {
   const zip = openDocxZip(storedBase64);
-  const counts = emptyWordCounts(words, flags.caseSensitive);
+  const counts = emptyWordCounts(words, flags.caseSensitive, flags.isRegex);
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory || !isWordTextPart(entry.entryName)) continue;
     const xml = stripUtf8Bom(entry.getData().toString('utf8'));
@@ -282,7 +294,8 @@ function countDocx(storedBase64, words, flags) {
           counts,
           countPlainText(node.data || '', words, flags),
           words,
-          flags.caseSensitive
+          flags.caseSensitive,
+          flags.isRegex
         );
       },
       { onlyWt: true }

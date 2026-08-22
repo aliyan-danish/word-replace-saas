@@ -22,6 +22,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@adguard/re2-wasm": "^1.2.1",
     "@prisma/client": "^5.22.0",
     "@xmldom/xmldom": "^0.9.11",
     "adm-zip": "^0.6.0",

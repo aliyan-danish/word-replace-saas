@@ -17,6 +17,7 @@ const MAX_WORD_PAIRS = 20;
 // Subscription/trial enforcement for uploads. PRO_PLAN_MISSING lets us surface a clear
 // "run the seed" 500 if the backfill can't find the PRO plan.
 const { getEnforcedSubscription, PRO_PLAN_MISSING } = require('../lib/subscription');
+const { validateRegexPatterns } = require('../lib/regexSafety');
 
 // Hard caps on uncompressed zip content. Checked via entry.header.size BEFORE
 // calling getData(), so a zip bomb is rejected without ever expanding into memory.
@@ -118,7 +119,8 @@ function normalizeReplacePairs(body) {
 }
 
 // Shared validation for search words / replace-pair words. Returns { words } or { error }.
-function parseWordList(rawWords, caseSensitive) {
+// Regex patterns are unique by exact source (so [A-Z] and [a-z] do not collide).
+function parseWordList(rawWords, caseSensitive, { isRegex } = {}) {
   if (!Array.isArray(rawWords) || rawWords.length === 0) {
     return { error: 'Provide at least one non-empty search word.' };
   }
@@ -136,7 +138,7 @@ function parseWordList(rawWords, caseSensitive) {
       return { error: 'Every search word must be a non-empty string.' };
     }
     const word = value.trim();
-    const key = caseSensitive ? word : word.toLowerCase();
+    const key = isRegex || caseSensitive ? word : word.toLowerCase();
     if (seen.has(key)) {
       return { error: 'Each search word must be unique within the job.' };
     }
@@ -148,12 +150,13 @@ function parseWordList(rawWords, caseSensitive) {
 
 // Stamp the job's shared toggles onto every pair so a later per-pair UI can
 // read them without another schema change.
-function stampPairFlags(pairs, caseSensitive, wholeWord) {
+function stampPairFlags(pairs, caseSensitive, wholeWord, isRegex) {
   return pairs.map((pair) => ({
     word: pair.word,
     replacement: pair.replacement,
     caseSensitive,
     wholeWord,
+    isRegex,
   }));
 }
 
@@ -278,12 +281,22 @@ async function searchJob(req, res) {
     // Normalize optional toggles to real booleans so the echoed response is clean.
     const caseSensitive = Boolean(body.caseSensitive);
     const wholeWord = Boolean(body.wholeWord);
+    const isRegex = Boolean(body.isRegex);
 
-    const parsed = parseWordList(normalizeSearchWords(body), caseSensitive);
+    const parsed = parseWordList(normalizeSearchWords(body), caseSensitive, { isRegex });
     if (parsed.error) {
       return res.status(400).json({ error: parsed.error });
     }
     const { words } = parsed;
+
+    // Validate BEFORE counting: search runs in-process, so a ReDoS pattern
+    // would hang the API. Worker is never the first line of defense.
+    if (isRegex) {
+      const regexCheck = validateRegexPatterns(words, { caseSensitive });
+      if (regexCheck.error) {
+        return res.status(400).json({ error: regexCheck.error });
+      }
+    }
 
     // Fetch the job with its files. We scope ownership after fetching so we can
     // return an identical 404 whether the job is missing or owned by someone else
@@ -301,7 +314,7 @@ async function searchJob(req, res) {
     // so per-word totals match what replace will actually change.
     let totalOccurrences = 0;
     const wordTotals = Object.fromEntries(
-      words.map((word) => [caseSensitive ? word : word.toLowerCase(), 0])
+      words.map((word) => [caseSensitive || isRegex ? word : word.toLowerCase(), 0])
     );
 
     const files = [];
@@ -309,9 +322,10 @@ async function searchJob(req, res) {
       const byKey = await countInStoredFile(file.filename, file.content, words, {
         caseSensitive,
         wholeWord,
+        isRegex,
       });
       const byWord = words.map((word) => {
-        const key = caseSensitive ? word : word.toLowerCase();
+        const key = caseSensitive || isRegex ? word : word.toLowerCase();
         const occurrences = byKey[key] ?? 0;
         wordTotals[key] += occurrences;
         totalOccurrences += occurrences;
@@ -326,10 +340,11 @@ async function searchJob(req, res) {
       words,
       caseSensitive,
       wholeWord,
+      isRegex,
       totalOccurrences,
       byWord: words.map((word) => ({
         word,
-        totalOccurrences: wordTotals[caseSensitive ? word : word.toLowerCase()] ?? 0,
+        totalOccurrences: wordTotals[caseSensitive || isRegex ? word : word.toLowerCase()] ?? 0,
       })),
       files,
     });
@@ -352,6 +367,7 @@ async function replaceJob(req, res) {
 
     const caseSensitive = Boolean(body.caseSensitive);
     const wholeWord = Boolean(body.wholeWord);
+    const isRegex = Boolean(body.isRegex);
 
     const rawPairs = normalizeReplacePairs(body);
     if (!rawPairs) {
@@ -362,7 +378,8 @@ async function replaceJob(req, res) {
 
     const parsed = parseWordList(
       rawPairs.map((pair) => (pair && typeof pair.word === 'string' ? pair.word : '')),
-      caseSensitive
+      caseSensitive,
+      { isRegex }
     );
     if (parsed.error) {
       return res.status(400).json({ error: parsed.error });
@@ -376,6 +393,13 @@ async function replaceJob(req, res) {
       }
     }
 
+    if (isRegex) {
+      const regexCheck = validateRegexPatterns(parsed.words, { caseSensitive });
+      if (regexCheck.error) {
+        return res.status(400).json({ error: regexCheck.error });
+      }
+    }
+
     // Copy the shared job toggles onto every pair (stored for a future per-pair UI).
     const pairs = stampPairFlags(
       parsed.words.map((word, i) => ({
@@ -383,7 +407,8 @@ async function replaceJob(req, res) {
         replacement: rawPairs[i].replacement,
       })),
       caseSensitive,
-      wholeWord
+      wholeWord,
+      isRegex
     );
 
     // Ownership check — identical to searchJob: a missing job and someone else's
@@ -412,6 +437,7 @@ async function replaceJob(req, res) {
       pairs,
       caseSensitive,
       wholeWord,
+      isRegex,
     });
 
     // Respond immediately; the client polls GET /:jobId/status for completion.

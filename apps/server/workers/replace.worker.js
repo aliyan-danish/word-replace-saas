@@ -21,6 +21,7 @@ function resolvePairs(data) {
         replacement: data.replacement ?? '',
         caseSensitive: Boolean(data.caseSensitive),
         wholeWord: Boolean(data.wholeWord),
+        isRegex: Boolean(data.isRegex),
       },
     ];
   }
@@ -30,7 +31,7 @@ function resolvePairs(data) {
 // The processor for a single replace job. Anything it throws marks that one job as
 // failed (handled below) but never stops the worker from processing future jobs.
 async function processReplaceJob(job) {
-  const { jobId, caseSensitive, wholeWord } = job.data;
+  const { jobId, caseSensitive, wholeWord, isRegex } = job.data;
   const pairs = resolvePairs(job.data);
   console.log(`[replace-worker] START queue-job ${job.id} → db-job ${jobId}`);
 
@@ -56,6 +57,7 @@ async function processReplaceJob(job) {
     const { stored, count } = await replaceInStoredFile(file.filename, file.content, pairs, {
       caseSensitive,
       wholeWord,
+      isRegex: Boolean(isRegex),
     });
     perFile.push({ id: file.id, replacements: count, replacedContent: stored });
   }

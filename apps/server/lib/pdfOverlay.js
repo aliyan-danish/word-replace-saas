@@ -46,6 +46,7 @@ const {
   findPairForMatch,
   applyCasePattern,
   emptyWordCounts,
+  countKey,
 } = require('./textReplace');
 
 let pdfjsModulePromise;
@@ -304,7 +305,7 @@ function collectRegexMatches(text, pairs, flags) {
       regex.lastIndex += 1;
       continue;
     }
-    const pair = findPairForMatch(match[0], pairs, flags.caseSensitive);
+    const pair = findPairForMatch(match[0], pairs, flags.caseSensitive, flags.isRegex);
     if (!pair) continue;
     const drawn = flags.caseSensitive
       ? pair.replacement
@@ -517,11 +518,9 @@ async function countPdf(storedBase64, words, flags) {
   const pages = await extractPages(bytes);
   const pairs = words.map((word) => ({ word, replacement: word }));
   const occurrences = await collectOccurrences(pages, pairs, flags);
-  const counts = emptyWordCounts(words, flags.caseSensitive);
+  const counts = emptyWordCounts(words, flags.caseSensitive, flags.isRegex);
   for (const occurrence of occurrences) {
-    const key = flags.caseSensitive
-      ? occurrence.pair.word
-      : occurrence.pair.word.toLowerCase();
+    const key = countKey(occurrence.pair.word, flags.caseSensitive, flags.isRegex);
     counts[key] = (counts[key] ?? 0) + 1;
   }
   return counts;
